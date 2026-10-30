@@ -53,7 +53,7 @@ The Ash House sample is already stored on Walrus Mainnet.
 
 A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember` on `https://relayer.memory.walrus.xyz`. The Rules screen shows the Mainnet count and the account id.
 
-If `TATUM_API_KEY` is set, Rules can read a Sui address through `https://sui-mainnet.gateway.tatum.io`: native balance and recent outgoing SUI transfers. The keys never reach the browser. Names are in [.env.example](.env.example). Do not commit `.env`.
+If `TATUM_API_KEY` is set, Rules reads a Sui address through Tatum's Sui GraphQL gateway at `https://sui-mainnet.gateway.tatum.io/graphql`: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway. The key never reaches the browser. Names are in [.env.example](.env.example). Do not commit `.env`.
 
 Without those env vars the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
 

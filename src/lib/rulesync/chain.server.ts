@@ -2,7 +2,7 @@ import { env } from "@/lib/env.server";
 
 const NAMESPACE = env("MEMWAL_NAMESPACE") ?? "rulesync";
 const RELAYER = env("MEMWAL_SERVER_URL") ?? "https://relayer.memory.walrus.xyz";
-const TATUM = "https://sui-mainnet.gateway.tatum.io";
+const TATUM = "https://sui-mainnet.gateway.tatum.io/graphql";
 
 export type ChainStatus = {
   walrus: boolean;
@@ -71,24 +71,6 @@ export async function recallLines(): Promise<{ ok: boolean; lines: string[]; err
   }
 }
 
-type BalanceChange = {
-  owner?: { AddressOwner?: string } | string;
-  coinType?: string;
-  amount?: string;
-};
-
-type TxBlock = {
-  digest?: string;
-  timestampMs?: string;
-  balanceChanges?: BalanceChange[];
-};
-
-function ownerAddress(owner: BalanceChange["owner"]): string {
-  if (!owner) return "";
-  if (typeof owner === "string") return owner.toLowerCase();
-  return (owner.AddressOwner ?? "").toLowerCase();
-}
-
 export type SuiRead = {
   ok: boolean;
   balance?: number;
@@ -96,54 +78,62 @@ export type SuiRead = {
   error?: string;
 };
 
+type GqlTx = {
+  digest?: string;
+  effects?: {
+    timestamp?: string;
+    balanceChanges?: { nodes?: { amount?: string }[] };
+  };
+};
+
 export async function readSuiAddress(address: string): Promise<SuiRead> {
   const key = env("TATUM_API_KEY");
   if (!key) return { ok: false, error: "Tatum is not configured" };
-  const rpc = async (method: string, params: unknown): Promise<unknown> => {
+  const query = `query($a: SuiAddress!) {
+    address(address: $a) {
+      balance(coinType: "0x2::sui::SUI") { totalBalance }
+      transactions(first: 8, filter: { sentAddress: $a }) {
+        nodes { digest effects { timestamp balanceChanges { nodes { amount } } } }
+      }
+    }
+  }`;
+  try {
     const res = await fetch(TATUM, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": key,
-        "gateway-api-key": key,
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      headers: { "content-type": "application/json", "x-api-key": key },
+      body: JSON.stringify({ query, variables: { a: address } }),
     });
     if (!res.ok) throw new Error(`Tatum ${res.status}`);
-    const json = (await res.json()) as { result?: unknown; error?: { message?: string } };
-    if (json.error) throw new Error(json.error.message ?? "Tatum RPC failed");
-    return json.result;
-  };
-  try {
-    const balance = (await rpc("suix_getBalance", [address])) as { totalBalance?: string };
-    const history = (await rpc("suix_queryTransactionBlocks", [
-      { filter: { FromAddress: address }, options: { showBalanceChanges: true } },
-      null,
-      12,
-      true,
-    ])) as { data?: TxBlock[] };
-    const want = address.toLowerCase();
-    const transfers = (history.data ?? []).flatMap((tx) => {
-      const change = (tx.balanceChanges ?? []).find((row) => {
-        const coin = row.coinType ?? "";
-        const amount = Number(row.amount ?? "0");
-        return ownerAddress(row.owner) === want && coin.endsWith("::sui::SUI") && amount < 0;
-      });
-      if (!change || !tx.digest) return [];
+    const json = (await res.json()) as {
+      data?: {
+        address?: {
+          balance?: { totalBalance?: string };
+          transactions?: { nodes?: GqlTx[] };
+        };
+      };
+      errors?: { message?: string }[];
+    };
+    if (json.errors?.length) throw new Error(json.errors[0]?.message ?? "Tatum query failed");
+    const row = json.data?.address;
+    const transfers = (row?.transactions?.nodes ?? []).flatMap((tx) => {
+      const spent = (tx.effects?.balanceChanges?.nodes ?? [])
+        .map((n) => Number(n.amount ?? "0"))
+        .filter((n) => n < 0);
+      if (!tx.digest || spent.length === 0) return [];
       return [
         {
           digest: tx.digest,
-          at: tx.timestampMs ? new Date(Number(tx.timestampMs)).toISOString() : new Date().toISOString(),
-          amount: Math.abs(Number(change.amount)) / 1e9,
+          at: tx.effects?.timestamp ?? new Date().toISOString(),
+          amount: Math.abs(spent[0]) / 1e9,
         },
       ];
     });
     return {
       ok: true,
-      balance: Number(balance.totalBalance ?? "0") / 1e9,
+      balance: Number(row?.balance?.totalBalance ?? "0") / 1e9,
       transfers,
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Tatum RPC failed" };
+    return { ok: false, error: err instanceof Error ? err.message : "Tatum query failed" };
   }
 }
