@@ -102,7 +102,11 @@ export async function readSuiAddress(address: string): Promise<SuiRead> {
   const rpc = async (method: string, params: unknown): Promise<unknown> => {
     const res = await fetch(TATUM, {
       method: "POST",
-      headers: { "content-type": "application/json", "gateway-api-key": key },
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "gateway-api-key": key,
+      },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
     if (!res.ok) throw new Error(`Tatum ${res.status}`);
