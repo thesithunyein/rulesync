@@ -43,13 +43,17 @@ An empty house learns the same way once a pattern repeats. Nothing is pre-seeded
 
 The engine is in [src/lib/rulesync/engine.ts](src/lib/rulesync/engine.ts). The screen is in [src/components/rulesync/app.tsx](src/components/rulesync/app.tsx).
 
-## Where the data lives
+## Mainnet
 
-Spends, stated rules, and adopted rules stay on this device under the `rulesync-v2` key. Export writes `rulesync.json`.
+The Ash House sample is already stored on Walrus Mainnet.
 
-If the server has Walrus Memory credentials, opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember` on `https://relayer.memory.walrus.xyz`. A browser with an empty device calls `recall` and rebuilds the house from those memories. The Rules screen shows the Mainnet count and the account id.
+- Account `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f`
+- Namespace `rulesync`
+- 34 memories: the house, 32 spends, and the adopted grocery rule
 
-If the server has a Tatum key, Rules can read a Sui address through `https://sui-mainnet.gateway.tatum.io`: native balance and recent outgoing SUI transfers. The key never reaches the browser. Names are in [.env.example](.env.example).
+A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember` on `https://relayer.memory.walrus.xyz`. The Rules screen shows the Mainnet count and the account id.
+
+If `TATUM_API_KEY` is set, Rules can read a Sui address through `https://sui-mainnet.gateway.tatum.io`: native balance and recent outgoing SUI transfers. The keys never reach the browser. Names are in [.env.example](.env.example). Do not commit `.env`.
 
 Without those env vars the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
 
