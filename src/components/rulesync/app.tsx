@@ -99,6 +99,18 @@ export function RuleSyncApp() {
         const status = await getChainStatus();
         if (cancel) return;
         setChain(status);
+        if (status.suiAddress) setSuiAddress(status.suiAddress);
+        if (status.tatum && status.suiAddress) {
+          const result = await readSui({ data: { address: status.suiAddress } });
+          if (!cancel) {
+            if (!result.ok || result.balance == null) {
+              setSuiError(result.error ?? "Tatum could not read that address");
+            } else {
+              setSuiBalance(result.balance);
+              setSuiTransfers(result.transfers ?? []);
+            }
+          }
+        }
         if (!status.walrus || houseRef.current) return;
         const recalled = await recallHouse();
         if (cancel || !recalled.ok || houseRef.current) return;
@@ -221,6 +233,11 @@ export function RuleSyncApp() {
   if (!house) {
     return (
       <Setup
+        wallet={
+          suiBalance != null
+            ? `${suiBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI on this wallet`
+            : suiError
+        }
         onStart={(name, members, solo, dual) =>
           openHouse(
             { name, members, startedAt: new Date().toISOString(), sample: false },
@@ -284,6 +301,7 @@ export function RuleSyncApp() {
                 ? ` · Mainnet ${chain.memories}`
                 : ""}
               {chainNote ? ` · ${chainNote}` : ""}
+              {suiBalance != null ? ` · ${suiBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI` : ""}
             </p>
 
             <div className="rise mt-10" style={{ animationDelay: "280ms" }}>
@@ -425,9 +443,11 @@ function Count({ value }: { value: number }) {
 function Setup({
   onStart,
   onSample,
+  wallet,
 }: {
   onStart: (name: string, members: string[], solo: number, dual: number) => void;
   onSample: () => void;
+  wallet?: string;
 }) {
   const [name, setName] = useState("");
   const [people, setPeople] = useState("You");
@@ -454,6 +474,7 @@ function Setup({
           <br />
           The rules you keep.
         </h1>
+        {wallet ? <p className="rise mt-4 text-sm text-mist">{wallet}</p> : null}
         <form
           className="rise mt-10 grid gap-3"
           style={{ animationDelay: "180ms" }}

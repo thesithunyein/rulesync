@@ -5,6 +5,7 @@ export type ChainStatus = {
   tatum: boolean;
   accountId: string | null;
   memories: number;
+  suiAddress: string | null;
 };
 
 export type SuiTransfer = { digest: string; at: string; amount: number };

@@ -9,6 +9,7 @@ export type ChainStatus = {
   tatum: boolean;
   accountId: string | null;
   memories: number;
+  suiAddress: string | null;
 };
 
 function walrusReady(): boolean {
@@ -26,16 +27,20 @@ async function client() {
 }
 
 export async function chainStatus(): Promise<ChainStatus> {
-  const tatum = Boolean(env("TATUM_API_KEY"));
-  const accountId = env("MEMWAL_ACCOUNT_ID") ?? null;
-  if (!walrusReady()) return { walrus: false, tatum, accountId, memories: 0 };
+  const raw = env("SUI_ADDRESS") ?? "";
+  const base = {
+    tatum: Boolean(env("TATUM_API_KEY")),
+    accountId: env("MEMWAL_ACCOUNT_ID") ?? null,
+    suiAddress: /^0x[a-fA-F0-9]{64}$/.test(raw) ? raw : null,
+  };
+  if (!walrusReady()) return { walrus: false, memories: 0, ...base };
   try {
     const mem = await client();
     const page = await mem.listNamespaces();
     const row = page.namespaces.find((ns) => ns.name === NAMESPACE);
-    return { walrus: true, tatum, accountId, memories: row?.memory_count ?? 0 };
+    return { walrus: true, memories: row?.memory_count ?? 0, ...base };
   } catch {
-    return { walrus: true, tatum, accountId, memories: 0 };
+    return { walrus: true, memories: 0, ...base };
   }
 }
 
