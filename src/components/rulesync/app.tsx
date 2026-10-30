@@ -1,0 +1,721 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowMark,
+  BrandMark,
+  CategoryGlyph,
+  CheckMark,
+  ExportMark,
+  HomeMark,
+  PairMark,
+  PersonMark,
+  PlusMark,
+  ResetMark,
+  RuleGlyph,
+  RulesMark,
+} from "@/components/rulesync/marks";
+import { SEED } from "@/lib/rulesync/seed";
+import { buildMemories, headline, judgeSpend, learnUpTo } from "@/lib/rulesync/engine";
+import {
+  CATEGORIES,
+  DEFAULT_STATED,
+  categoryLabel,
+  isAdopted,
+  money,
+  weekdayFromDate,
+  weekOf,
+  type Category,
+  type Decision,
+  type Household,
+  type LearnedRule,
+  type StatedRules,
+  type Verdict,
+} from "@/lib/rulesync/types";
+
+const STORAGE_KEY = "rulesync-v2";
+const SAMPLE_START = new Date(Date.UTC(2026, 8, 7, 12)).toISOString();
+
+type Saved = {
+  house: Household | null;
+  stated: StatedRules;
+  decisions: Decision[];
+};
+
+function loadSaved(): Saved | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Saved;
+    if (!parsed || !("house" in parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function todayInput(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+export function RuleSyncApp() {
+  const [house, setHouse] = useState<Household | null>(null);
+  const [stated, setStated] = useState<StatedRules>(DEFAULT_STATED);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+  const [view, setView] = useState<"home" | "rules">("home");
+  const [logging, setLogging] = useState(false);
+
+  useEffect(() => {
+    const saved = loadSaved();
+    if (saved) {
+      setHouse(saved.house);
+      setStated({ ...DEFAULT_STATED, ...saved.stated, caps: saved.stated?.caps ?? {} });
+      setDecisions(saved.decisions ?? []);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const payload: Saved = { house, stated, decisions };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [house, stated, decisions, hydrated]);
+
+  const week = decisions.reduce((m, d) => Math.max(m, d.week), 1);
+  const rules = useMemo(() => learnUpTo(decisions, week, stated), [decisions, week, stated]);
+  const spent = decisions.reduce((a, d) => a + d.amount, 0);
+  const line = headline(rules, stated);
+  const lead = rules.find((r) => r.kind === "solo_cap" && !isAdopted(r, stated)) ?? null;
+
+  function openHouse(next: Household, nextStated: StatedRules, nextDecisions: Decision[]) {
+    setHouse(next);
+    setStated(nextStated);
+    setDecisions(nextDecisions);
+    setView("home");
+    setLogging(false);
+  }
+
+  function adopt(rule: LearnedRule) {
+    if (isAdopted(rule, stated)) return;
+    setStated((s) => {
+      if (rule.kind === "solo_cap" && rule.category && rule.cap != null) {
+        return { ...s, caps: { ...s.caps, [rule.category]: rule.cap } };
+      }
+      if (rule.kind === "never_discussed") return { ...s, silenceUnder: true };
+      if (rule.kind === "false_dual") return { ...s, treatFastDualAsSingle: true };
+      if (rule.kind === "rhythm") return { ...s, rhythms: [...s.rhythms, rule.id] };
+      if (rule.kind === "allowance") return { ...s, allowances: [...s.allowances, rule.id] };
+      return s;
+    });
+  }
+
+  function addDecision(next: Decision) {
+    setDecisions((prev) => [...prev, next]);
+    setLogging(false);
+    setView("home");
+  }
+
+  function startOver() {
+    localStorage.removeItem(STORAGE_KEY);
+    setHouse(null);
+    setStated(DEFAULT_STATED);
+    setDecisions([]);
+    setView("home");
+    setLogging(false);
+  }
+
+  function exportFile() {
+    if (!house) return;
+    const memories = buildMemories(decisions, house.name, stated, rules);
+    const blob = new Blob(
+      [JSON.stringify({ house, stated, decisions, rules, memories }, null, 2)],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "rulesync.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (!hydrated) {
+    return <main className="min-h-screen bg-paper" />;
+  }
+
+  if (!house) {
+    return (
+      <Setup
+        onStart={(name, members, solo, dual) =>
+          openHouse(
+            { name, members, startedAt: new Date().toISOString(), sample: false },
+            { ...DEFAULT_STATED, soloLimit: solo, dualAbove: dual },
+            [],
+          )
+        }
+        onSample={() =>
+          openHouse(
+            {
+              name: "Ash House",
+              members: ["Alex", "Sam", "Max"],
+              startedAt: SAMPLE_START,
+              sample: true,
+            },
+            { ...DEFAULT_STATED, soloLimit: 18, dualAbove: 100 },
+            SEED.map((d) => ({ ...d })),
+          )
+        }
+      />
+    );
+  }
+
+  const recent = [...decisions].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+
+  return (
+    <div className="min-h-screen bg-paper text-ink">
+      <div className="mx-auto flex min-h-screen max-w-lg flex-col px-5 pb-28 pt-8 sm:px-6">
+        <header className="rise flex items-center justify-between">
+          <p className="flex items-center gap-2.5">
+            <BrandMark />
+            <span className="font-display text-base tracking-tight text-ink">RuleSync</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setView(view === "home" ? "rules" : "home")}
+            className="press inline-flex min-h-11 items-center gap-2 text-sm text-ink"
+          >
+            {view === "home" ? <RulesMark /> : <HomeMark />}
+            {view === "home" ? "Rules" : "Home"}
+          </button>
+        </header>
+
+        {view === "home" ? (
+          <section className="mt-10 flex flex-1 flex-col">
+            <p className="rise text-sm text-mist" style={{ animationDelay: "80ms" }}>
+              {house.name}
+              {house.sample ? " · sample" : ""}
+            </p>
+            <h1
+              className="rise mt-3 font-display text-6xl leading-none tracking-tight sm:text-7xl"
+              style={{ animationDelay: "140ms" }}
+            >
+              <Count value={spent} />
+            </h1>
+            <p className="rise mt-3 text-sm text-mist" style={{ animationDelay: "200ms" }}>
+              {decisions.length === 0
+                ? "Nothing logged yet."
+                : `${decisions.length} spends · floor ${money(stated.soloLimit)} · two names over ${money(stated.dualAbove)}`}
+            </p>
+
+            <div className="rise mt-10" style={{ animationDelay: "280ms" }}>
+              {decisions.length === 0 ? (
+                <p className="font-display text-3xl leading-tight">
+                  Log a few spends. A rule appears once the house repeats itself.
+                </p>
+              ) : line ? (
+                <button
+                  type="button"
+                  onClick={() => (lead ? adopt(lead) : setView("rules"))}
+                  className="press w-full rounded-3xl bg-ink px-5 py-6 text-left text-paper"
+                >
+                  <p className="font-display text-2xl leading-snug">{line}</p>
+                  <p className="mt-3 text-sm text-paper/70">
+                    {lead && !isAdopted(lead, stated) ? "Adopt this" : "See the rules"}
+                  </p>
+                </button>
+              ) : (
+                <p className="font-display text-3xl leading-tight">The written rules and the lived ones match.</p>
+              )}
+            </div>
+
+            {recent.length > 0 && (
+              <ul className="mt-10 divide-y divide-line">
+                {recent.map((d, i) => (
+                  <li
+                    key={d.id}
+                    className="rise flex items-center justify-between gap-4 py-3"
+                    style={{ animationDelay: `${360 + i * 60}ms` }}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex size-10 items-center justify-center rounded-2xl bg-panel-2 text-ink">
+                        <CategoryGlyph id={d.category} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate">{d.merchant}</p>
+                        <p className="text-sm text-mist">
+                          {d.member} · {categoryLabel(d.category)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="shrink-0 tabular-nums">{money(d.amount)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : (
+          <RulesView
+            stated={stated}
+            rules={rules}
+            onAdopt={adopt}
+            onExport={exportFile}
+            onReset={startOver}
+          />
+        )}
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-paper via-paper to-transparent px-5 pt-8 pb-6">
+        <div className="mx-auto max-w-lg">
+          <button
+            type="button"
+            onClick={() => setLogging(true)}
+            className="press inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-medium text-accent-ink"
+          >
+            <PlusMark />
+            Log a spend
+          </button>
+        </div>
+      </div>
+
+      <LogSheet
+        open={logging}
+        house={house}
+        stated={stated}
+        rules={rules}
+        onClose={() => setLogging(false)}
+        onSave={addDecision}
+      />
+    </div>
+  );
+}
+
+function Count({ value }: { value: number }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setN(value);
+      return;
+    }
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 800);
+      const e = 1 - (1 - p) ** 3;
+      setN(value * e);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  const shown = value % 1 === 0 ? Math.round(n) : n;
+  return <span className="tabular-nums">{money(shown)}</span>;
+}
+
+function Setup({
+  onStart,
+  onSample,
+}: {
+  onStart: (name: string, members: string[], solo: number, dual: number) => void;
+  onSample: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [people, setPeople] = useState("You");
+  const [solo, setSolo] = useState("40");
+  const [dual, setDual] = useState("200");
+
+  const members = people
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const soloN = Number(solo);
+  const dualN = Number(dual);
+  const ready = name.trim().length > 0 && members.length > 0 && soloN > 0 && dualN > soloN;
+
+  return (
+    <main className="min-h-screen bg-paper text-ink">
+      <div className="mx-auto flex min-h-screen max-w-lg flex-col px-5 pt-16 pb-10 sm:px-6 sm:pt-24">
+        <p className="rise flex items-center gap-2.5">
+          <BrandMark size={36} />
+          <span className="font-display text-base tracking-tight text-ink">RuleSync</span>
+        </p>
+        <h1 className="rise mt-4 font-display text-4xl leading-none tracking-tighter sm:text-5xl" style={{ animationDelay: "90ms" }}>
+          The rules you wrote.
+          <br />
+          The rules you keep.
+        </h1>
+        <form
+          className="rise mt-10 grid gap-3"
+          style={{ animationDelay: "180ms" }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!ready) return;
+            onStart(name.trim(), members, soloN, dualN);
+          }}
+        >
+          <Field label="House" icon={<HomeMark size={14} />}>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="North House"
+              className="min-h-12 w-full bg-transparent font-display text-2xl outline-none placeholder:text-line"
+            />
+          </Field>
+          <Field label="People, separated by commas" icon={<PairMark size={14} />}>
+            <input
+              value={people}
+              onChange={(e) => setPeople(e.target.value)}
+              className="min-h-12 w-full bg-transparent text-lg outline-none"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Alone, no talk" icon={<PersonMark size={14} />}>
+              <input
+                inputMode="decimal"
+                value={solo}
+                onChange={(e) => setSolo(e.target.value)}
+                className="min-h-12 w-full bg-transparent text-lg tabular-nums outline-none"
+              />
+            </Field>
+            <Field label="Two names above" icon={<PairMark size={14} />}>
+              <input
+                inputMode="decimal"
+                value={dual}
+                onChange={(e) => setDual(e.target.value)}
+                className="min-h-12 w-full bg-transparent text-lg tabular-nums outline-none"
+              />
+            </Field>
+          </div>
+          <button
+            type="submit"
+            disabled={!ready}
+            className="press mt-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-ink text-sm font-medium text-paper disabled:opacity-40"
+          >
+            <ArrowMark />
+            Open the house
+          </button>
+          <button type="button" onClick={onSample} className="press min-h-11 text-sm text-mist">
+            Or open the sample house
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}
+
+function Field({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block rounded-2xl border border-line bg-panel px-4 py-2">
+      <span className="flex items-center gap-1.5 text-xs text-mist">
+        {icon}
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function RulesView({
+  stated,
+  rules,
+  onAdopt,
+  onExport,
+  onReset,
+}: {
+  stated: StatedRules;
+  rules: LearnedRule[];
+  onAdopt: (rule: LearnedRule) => void;
+  onExport: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <section className="mt-10">
+      <h1 className="rise font-display text-4xl">Rules</h1>
+      <dl className="rise mt-6 grid grid-cols-2 gap-3" style={{ animationDelay: "80ms" }}>
+        <div className="rounded-2xl bg-panel-2 px-4 py-4">
+          <dt className="flex items-center gap-1.5 text-xs text-mist">
+            <PersonMark />
+            Alone
+          </dt>
+          <dd className="mt-1 font-display text-2xl">{money(stated.soloLimit)}</dd>
+        </div>
+        <div className="rounded-2xl bg-panel-2 px-4 py-4">
+          <dt className="flex items-center gap-1.5 text-xs text-mist">
+            <PairMark />
+            Two names
+          </dt>
+          <dd className="mt-1 font-display text-2xl">{money(stated.dualAbove)}</dd>
+        </div>
+      </dl>
+      <ul className="mt-8 grid gap-3">
+        {rules.length === 0 && (
+          <li className="text-sm text-mist">Nothing has repeated enough to call a rule.</li>
+        )}
+        {rules.map((rule, i) => {
+          const on = isAdopted(rule, stated);
+          return (
+            <li
+              key={rule.id}
+              className="rise rounded-3xl border border-line bg-panel px-5 py-5"
+              style={{ animationDelay: `${140 + i * 70}ms` }}
+            >
+              <div className="flex gap-3">
+                <span className="mt-1 text-accent">
+                  <RuleGlyph kind={rule.kind} />
+                </span>
+                <h2 className="font-display text-2xl leading-snug">{rule.title}</h2>
+              </div>
+              <p className="mt-2 text-sm text-mist">{rule.evidence}</p>
+              <button
+                type="button"
+                disabled={on}
+                onClick={() => onAdopt(rule)}
+                className="press mt-4 inline-flex min-h-11 items-center gap-2 text-sm text-accent disabled:text-mist"
+              >
+                {on ? <CheckMark /> : <PlusMark />}
+                {on ? "On the books" : "Adopt"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-10 flex gap-6 text-sm text-mist">
+        <button type="button" onClick={onExport} className="press inline-flex min-h-11 items-center gap-2">
+          <ExportMark />
+          Export
+        </button>
+        <button type="button" onClick={onReset} className="press inline-flex min-h-11 items-center gap-2">
+          <ResetMark />
+          Start over
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-mist">Stays on this device until you export it.</p>
+    </section>
+  );
+}
+
+function LogSheet({
+  open,
+  house,
+  stated,
+  rules,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  house: Household;
+  stated: StatedRules;
+  rules: LearnedRule[];
+  onClose: () => void;
+  onSave: (d: Decision) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [merchant, setMerchant] = useState("");
+  const [member, setMember] = useState(house.members[0] ?? "");
+  const [category, setCategory] = useState<Category>("groceries");
+  const [date, setDate] = useState(todayInput);
+  const [discussed, setDiscussed] = useState(false);
+  const [second, setSecond] = useState("");
+  const [delay, setDelay] = useState("2");
+
+  useEffect(() => {
+    setMember(house.members[0] ?? "");
+  }, [house.members]);
+
+  const n = Number(amount);
+  const weekday = weekdayFromDate(date);
+  const approvals = second ? [member, second].filter((v, i, arr) => arr.indexOf(v) === i) : [member];
+  const verdict: Verdict | null =
+    Number.isFinite(n) && n > 0
+      ? judgeSpend(
+          {
+            member,
+            category,
+            amount: n,
+            discussed,
+            approvals,
+            secondSignDelayMin: second ? Number(delay) || 0 : null,
+            weekday,
+          },
+          stated,
+          rules,
+        )
+      : null;
+
+  function save() {
+    if (!verdict || !merchant.trim()) return;
+    const at = new Date(`${date}T12:00:00`).toISOString();
+    onSave({
+      id: `you-${Date.now()}`,
+      week: weekOf(at, house.startedAt),
+      weekday,
+      at,
+      member,
+      category,
+      merchant: merchant.trim(),
+      amount: Math.round(n * 100) / 100,
+      discussed,
+      approvals,
+      secondSignDelayMin: second ? Number(delay) || 0 : null,
+      source: "you",
+    });
+    setAmount("");
+    setMerchant("");
+    setDiscussed(false);
+    setSecond("");
+  }
+
+  return (
+    <div
+      className={`fixed inset-0 z-20 ${open ? "" : "pointer-events-none"}`}
+      aria-hidden={!open}
+      inert={open ? undefined : true}
+    >
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className={`absolute inset-0 bg-ink/30 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Log a spend"
+        className={`sheet absolute inset-x-0 bottom-0 mx-auto max-h-screen max-w-lg overflow-y-auto rounded-t-3xl bg-panel px-5 pt-4 pb-8 sm:px-6 ${
+          open ? "translate-y-0" : "translate-y-full"
+        }`}
+      >
+        <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-line" />
+        <div className="flex items-start justify-between gap-3">
+          <label className="block flex-1">
+            <span className="text-xs text-mist">Amount</span>
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              className="mt-1 w-full bg-transparent font-display text-6xl tabular-nums outline-none placeholder:text-line"
+            />
+          </label>
+          <button type="button" onClick={onClose} className="press min-h-11 text-sm text-mist">
+            Close
+          </button>
+        </div>
+        <label className="mt-2 block">
+          <span className="text-xs text-mist">Where</span>
+          <input
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            placeholder="Market"
+            className="mt-1 min-h-11 w-full bg-transparent text-lg outline-none placeholder:text-line"
+          />
+        </label>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {house.members.map((person) => (
+            <button
+              key={person}
+              type="button"
+              onClick={() => setMember(person)}
+              className={`press min-h-11 rounded-full px-4 text-sm ${
+                member === person ? "bg-ink text-paper" : "bg-panel-2 text-ink"
+              }`}
+            >
+              {person}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCategory(c.id)}
+              className={`press flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-xs ${
+                category === c.id ? "bg-ink text-paper" : "bg-panel-2 text-ink"
+              }`}
+            >
+              <CategoryGlyph id={c.id} />
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <label className="mt-3 block text-sm">
+          <span className="text-xs text-mist">Date</span>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="mt-1 min-h-11 w-full rounded-xl border border-line bg-paper px-3"
+          />
+        </label>
+        <label className="mt-4 flex min-h-11 items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={discussed}
+            onChange={(e) => setDiscussed(e.target.checked)}
+            className="size-4 accent-accent"
+          />
+          Talked about it first
+        </label>
+        {house.members.length > 1 && (
+          <label className="mt-2 block text-sm">
+            <span className="text-xs text-mist">Second name</span>
+            <select
+              value={second}
+              onChange={(e) => setSecond(e.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line bg-paper px-3"
+            >
+              <option value="">None</option>
+              {house.members
+                .filter((p) => p !== member)
+                .map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+            </select>
+          </label>
+        )}
+        {second && (
+          <label className="mt-3 block text-sm">
+            <span className="text-xs text-mist">Minutes until they signed</span>
+            <input
+              inputMode="numeric"
+              value={delay}
+              onChange={(e) => setDelay(e.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line bg-paper px-3 tabular-nums"
+            />
+          </label>
+        )}
+        {verdict && (
+          <div
+            className={`mt-5 rounded-2xl px-4 py-4 transition-colors duration-300 ${
+              verdict.tone === "break" ? "bg-ink text-paper" : "bg-panel-2 text-ink"
+            }`}
+          >
+            <p className="text-sm font-medium">{verdict.title}</p>
+            <p className={`mt-1 text-sm ${verdict.tone === "break" ? "text-paper/70" : "text-mist"}`}>
+              {verdict.lines[0]}
+            </p>
+          </div>
+        )}
+        <button
+          type="button"
+          disabled={!verdict || !merchant.trim()}
+          onClick={save}
+          className="press mt-5 min-h-12 w-full rounded-full bg-accent text-sm font-medium text-accent-ink disabled:opacity-40"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}

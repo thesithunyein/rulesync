@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "RuleSync",
+      "hasCanvas": false,
+      "bodyTextLen": 154,
+      "bodyTextHash": "c4c13398bc0382d16f87ea10e91abbc190b797c522153b56dcc2ca931616e791",
+      "bodyTextPrefix": "RULESYNC The rules you wrote. The rules you keep. House People, ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "RuleSync",
+      "hasCanvas": false,
+      "bodyTextLen": 154,
+      "bodyTextHash": "c4c13398bc0382d16f87ea10e91abbc190b797c522153b56dcc2ca931616e791",
+      "bodyTextPrefix": "RULESYNC The rules you wrote. The rules you keep. House People, ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

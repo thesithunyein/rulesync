@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "RuleSync",
+      "hasCanvas": false,
+      "bodyTextLen": 154,
+      "bodyTextHash": "6aba76a3c5d486c4475c01031995bb0afca67e7bd9608f29b99b02293b186ee9",
+      "bodyTextPrefix": "RuleSync The rules you wrote. The rules you keep. House People, ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/logo-setup.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "RuleSync",
+      "hasCanvas": false,
+      "bodyTextLen": 154,
+      "bodyTextHash": "6aba76a3c5d486c4475c01031995bb0afca67e7bd9608f29b99b02293b186ee9",
+      "bodyTextPrefix": "RuleSync The rules you wrote. The rules you keep. House People, ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/logo-setup-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/logo-setup.json"
+}
