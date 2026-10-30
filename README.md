@@ -45,9 +45,13 @@ The engine is in [src/lib/rulesync/engine.ts](src/lib/rulesync/engine.ts). The s
 
 ## Where the data lives
 
-Spends, stated rules, and adopted rules stay on this device under the `rulesync-v2` key. Export is the copy you can take with you.
+Spends, stated rules, and adopted rules stay on this device under the `rulesync-v2` key. Export writes `rulesync.json`.
 
-Mainnet memory is the next layer, not this commit. Each spend and each adopt will call Walrus Memory `remember` on `https://relayer.memory.walrus.xyz`, and a fresh session will `recall` them back. Household balances will be read with Tatum Sui RPC at `https://sui-mainnet.gateway.tatum.io`. Keys stay on the server. Names are in [.env.example](.env.example).
+If the server has Walrus Memory credentials, opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember` on `https://relayer.memory.walrus.xyz`. A browser with an empty device calls `recall` and rebuilds the house from those memories. The Rules screen shows the Mainnet count and the account id.
+
+If the server has a Tatum key, Rules can read a Sui address through `https://sui-mainnet.gateway.tatum.io`: native balance and recent outgoing SUI transfers. The key never reaches the browser. Names are in [.env.example](.env.example).
+
+Without those env vars the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
 
 ## Stack
 

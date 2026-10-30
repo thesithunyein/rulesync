@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowMark,
   BrandMark,
@@ -14,6 +14,8 @@ import {
   RulesMark,
 } from "@/components/rulesync/marks";
 import { SEED } from "@/lib/rulesync/seed";
+import { getChainStatus, readSui, recallHouse, rememberLines, type ChainStatus, type SuiTransfer } from "@/lib/rulesync/chain";
+import { adoptMemory, houseMemory, restoreFromLines, spendMemory } from "@/lib/rulesync/memory";
 import { buildMemories, headline, judgeSpend, learnUpTo } from "@/lib/rulesync/engine";
 import {
   CATEGORIES,
@@ -66,6 +68,14 @@ export function RuleSyncApp() {
   const [hydrated, setHydrated] = useState(false);
   const [view, setView] = useState<"home" | "rules">("home");
   const [logging, setLogging] = useState(false);
+  const [chain, setChain] = useState<ChainStatus | null>(null);
+  const [chainNote, setChainNote] = useState("");
+  const [suiAddress, setSuiAddress] = useState("");
+  const [suiBalance, setSuiBalance] = useState<number | null>(null);
+  const [suiTransfers, setSuiTransfers] = useState<SuiTransfer[]>([]);
+  const [suiError, setSuiError] = useState("");
+  const houseRef = useRef<Household | null>(null);
+  const chainRef = useRef<ChainStatus | null>(null);
 
   useEffect(() => {
     const saved = loadSaved();
@@ -76,6 +86,63 @@ export function RuleSyncApp() {
     }
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    houseRef.current = house;
+    chainRef.current = chain;
+  }, [house, chain]);
+
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const status = await getChainStatus();
+        if (cancel) return;
+        setChain(status);
+        if (!status.walrus || houseRef.current) return;
+        const recalled = await recallHouse();
+        if (cancel || !recalled.ok || houseRef.current) return;
+        const restored = restoreFromLines(recalled.lines);
+        if (!restored) return;
+        setHouse(restored.house);
+        setStated(restored.stated);
+        setDecisions(restored.decisions);
+        setChainNote("Restored from Mainnet");
+      } catch {
+        if (!cancel) setChainNote("");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  function publish(texts: string[]) {
+    if (texts.length === 0) return;
+    void (async () => {
+      let ready = chainRef.current?.walrus ?? false;
+      if (!chainRef.current) {
+        const status = await getChainStatus();
+        chainRef.current = status;
+        setChain(status);
+        ready = status.walrus;
+      }
+      if (!ready) return;
+      let wrote = 0;
+      for (let i = 0; i < texts.length; i += 15) {
+        const chunk = texts.slice(i, i + 15);
+        const result = await rememberLines({ data: { texts: chunk } });
+        if (!result.ok) {
+          setChainNote(result.error ?? "Mainnet write failed");
+          return;
+        }
+        wrote += result.wrote;
+      }
+      const status = await getChainStatus();
+      setChain(status);
+      setChainNote(wrote > 0 ? `${wrote} on Mainnet` : "");
+    })().catch(() => setChainNote("Mainnet write failed"));
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -95,6 +162,10 @@ export function RuleSyncApp() {
     setDecisions(nextDecisions);
     setView("home");
     setLogging(false);
+    publish([
+      houseMemory(next, nextStated),
+      ...nextDecisions.map(spendMemory),
+    ]);
   }
 
   function adopt(rule: LearnedRule) {
@@ -109,12 +180,14 @@ export function RuleSyncApp() {
       if (rule.kind === "allowance") return { ...s, allowances: [...s.allowances, rule.id] };
       return s;
     });
+    publish([adoptMemory(rule)]);
   }
 
   function addDecision(next: Decision) {
     setDecisions((prev) => [...prev, next]);
     setLogging(false);
     setView("home");
+    publish([spendMemory(next)]);
   }
 
   function startOver() {
@@ -207,6 +280,10 @@ export function RuleSyncApp() {
               {decisions.length === 0
                 ? "Nothing logged yet."
                 : `${decisions.length} spends · floor ${money(stated.soloLimit)} · two names over ${money(stated.dualAbove)}`}
+              {chain?.walrus
+                ? ` · Mainnet ${chain.memories}`
+                : ""}
+              {chainNote ? ` · ${chainNote}` : ""}
             </p>
 
             <div className="rise mt-10" style={{ animationDelay: "280ms" }}>
@@ -262,6 +339,37 @@ export function RuleSyncApp() {
             onAdopt={adopt}
             onExport={exportFile}
             onReset={startOver}
+            walrus={Boolean(chain?.walrus)}
+            tatum={Boolean(chain?.tatum)}
+            accountId={chain?.accountId ?? null}
+            memories={chain?.memories ?? 0}
+            onWrite={() =>
+              publish([
+                house ? houseMemory(house, stated) : "",
+                ...decisions.map(spendMemory),
+                ...rules.filter((rule) => isAdopted(rule, stated)).map(adoptMemory),
+              ].filter(Boolean))
+            }
+            suiAddress={suiAddress}
+            onSuiAddress={setSuiAddress}
+            suiBalance={suiBalance}
+            suiTransfers={suiTransfers}
+            suiError={suiError}
+            onReadSui={() => {
+              setSuiError("");
+              void readSui({ data: { address: suiAddress.trim() } })
+                .then((result) => {
+                  if (!result.ok || result.balance == null) {
+                    setSuiBalance(null);
+                    setSuiTransfers([]);
+                    setSuiError(result.error ?? "Tatum could not read that address");
+                    return;
+                  }
+                  setSuiBalance(result.balance);
+                  setSuiTransfers(result.transfers ?? []);
+                })
+                .catch(() => setSuiError("Tatum could not read that address"));
+            }}
           />
         )}
       </div>
@@ -431,12 +539,34 @@ function RulesView({
   onAdopt,
   onExport,
   onReset,
+  walrus,
+  tatum,
+  accountId,
+  memories,
+  onWrite,
+  suiAddress,
+  onSuiAddress,
+  suiBalance,
+  suiTransfers,
+  suiError,
+  onReadSui,
 }: {
   stated: StatedRules;
   rules: LearnedRule[];
   onAdopt: (rule: LearnedRule) => void;
   onExport: () => void;
   onReset: () => void;
+  walrus: boolean;
+  tatum: boolean;
+  accountId: string | null;
+  memories: number;
+  onWrite: () => void;
+  suiAddress: string;
+  onSuiAddress: (value: string) => void;
+  suiBalance: number | null;
+  suiTransfers: SuiTransfer[];
+  suiError: string;
+  onReadSui: () => void;
 }) {
   return (
     <section className="mt-10">
@@ -489,7 +619,12 @@ function RulesView({
           );
         })}
       </ul>
-      <div className="mt-10 flex gap-6 text-sm text-mist">
+      <div className="mt-10 flex flex-wrap gap-x-6 text-sm text-mist">
+        {walrus && (
+          <button type="button" onClick={onWrite} className="press min-h-11">
+            Write to Mainnet
+          </button>
+        )}
         <button type="button" onClick={onExport} className="press inline-flex min-h-11 items-center gap-2">
           <ExportMark />
           Export
@@ -499,7 +634,49 @@ function RulesView({
           Start over
         </button>
       </div>
-      <p className="mt-2 text-xs text-mist">Stays on this device until you export it.</p>
+      <p className="mt-2 text-xs text-mist">
+        {walrus
+          ? `Mainnet ${memories}${accountId ? ` · ${accountId.slice(0, 10)}…` : ""}`
+          : "Stays on this device until you export it."}
+      </p>
+      {tatum && (
+        <form
+          className="mt-8"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onReadSui();
+          }}
+        >
+          <Field label="Sui address">
+            <input
+              value={suiAddress}
+              onChange={(e) => onSuiAddress(e.target.value)}
+              placeholder="0x"
+              spellCheck={false}
+              className="min-h-12 w-full bg-transparent text-sm outline-none placeholder:text-line"
+            />
+          </Field>
+          <button type="submit" className="press mt-3 min-h-11 text-sm text-accent">
+            Read with Tatum
+          </button>
+          {suiError && <p className="mt-2 text-sm text-mist">{suiError}</p>}
+          {suiBalance != null && (
+            <p className="mt-3 font-display text-2xl">
+              {suiBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI
+            </p>
+          )}
+          {suiTransfers.length > 0 && (
+            <ul className="mt-3 divide-y divide-line text-sm">
+              {suiTransfers.slice(0, 6).map((tx) => (
+                <li key={tx.digest} className="flex justify-between gap-4 py-3">
+                  <span className="truncate text-mist">{tx.digest.slice(0, 10)}</span>
+                  <span className="tabular-nums">{tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
     </section>
   );
 }
