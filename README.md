@@ -1,26 +1,63 @@
-# RuleSync
+<p align="center">
+  <img src="public/logo.svg" width="72" height="72" alt="RuleSync">
+</p>
 
-Shared household spending that learns the difference between the rule you wrote and the rule you keep.
+<h1 align="center">RuleSync</h1>
+
+<p align="center">
+  Shared household spending that learns the difference between the rule you wrote and the rule you keep.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-0e6b4f?style=flat-square"></a>
+  <a href="https://tatum.io/hackathon/total-recall"><img alt="Consumer Finance track" src="https://img.shields.io/badge/track-Consumer%20Finance-1c1915?style=flat-square"></a>
+  <a href="https://docs.wal.app"><img alt="Walrus Mainnet" src="https://img.shields.io/badge/Walrus-34%20memories-0e6b4f?style=flat-square"></a>
+  <a href="https://sui.io"><img alt="Sui Mainnet" src="https://img.shields.io/badge/Sui-Mainnet-1c1915?style=flat-square"></a>
+  <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-0e6b4f?style=flat-square"></a>
+</p>
 
 You set a floor. The house spends. RuleSync notices when groceries always go through alone, when one weekday keeps repeating, or when a second name shows up too fast to count. Adopt the rule, and the next spend is judged against it.
 
 Built for the [Tatum × Walrus Total Recall](https://tatum.io/hackathon/total-recall) hackathon, Consumer Finance track.
 
+## The loop
+
+```mermaid
+flowchart TD
+  spend["Log a spend"] --> engine["Learning engine"]
+  engine --> gap{"Written rule matches the habit?"}
+  gap -->|no| propose["Propose a rule"]
+  propose --> adopt["Adopt"]
+  adopt --> books["On the books"]
+  gap -->|yes| books
+  books --> next["Next spend is judged"]
+  spend --> device["This device"]
+  spend --> server["Server functions"]
+  adopt --> server
+  server --> walrus["Walrus Mainnet"]
+  server --> tatum["Tatum Sui GraphQL"]
+  tatum --> sui["Sui balance and transfers"]
+  walrus --> fresh["Empty browser recalls the house"]
+```
+
+The chain is not a screen. Walrus stores the house, the spends, and the adopted rules. Tatum only reads the household Sui address. Dollar spends never mix with the SUI balance.
+
 ## Run
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
-Open the app and either start a house or load the sample house. The sample is six weeks of spends for Alex, Sam, and Max, with a written solo floor of $18.
+Open the app and either start a house or load the sample house. The sample is six weeks of spends for Alex, Sam, and Max, with a written solo floor of $18. Without the env file the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
 
 ```bash
 npm run typecheck
 npm run build
 ```
 
-## Try the loop
+## Try it
 
 1. Open the sample house.
 2. The home line states the gap. The written floor is $18. Groceries actually reach $45.
@@ -41,22 +78,55 @@ An empty house learns the same way once a pattern repeats. Nothing is pre-seeded
 | False dual | A second name arrives too fast to be a real approval |
 | Never discussed | Spends under the floor that nobody talked about |
 
-The engine is in [src/lib/rulesync/engine.ts](src/lib/rulesync/engine.ts). The screen is in [src/components/rulesync/app.tsx](src/components/rulesync/app.tsx).
-
 ## Mainnet
 
-The Ash House sample is already stored on Walrus Mainnet.
+The Ash House sample is stored on Walrus Mainnet.
 
-- Account `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f`
-- Namespace `rulesync`
-- 34 memories: the house, 32 spends, and the adopted grocery rule
+| | |
+|---|---|
+| Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
+| Namespace | `rulesync` |
+| Memories | 34. The house, 32 spends, and the adopted grocery rule |
+| Relayer | `https://relayer.memory.walrus.xyz` |
+| Sui reads | `https://sui-mainnet.gateway.tatum.io/graphql` |
 
-A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember` on `https://relayer.memory.walrus.xyz`. The Rules screen shows the Mainnet count and the account id.
+A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember`. The Rules screen shows the Mainnet count and the account id.
 
-If `TATUM_API_KEY` is set, Rules reads a Sui address through Tatum's Sui GraphQL gateway at `https://sui-mainnet.gateway.tatum.io/graphql`: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway. The key never reaches the browser. Names are in [.env.example](.env.example). Do not commit `.env`.
+If `TATUM_API_KEY` is set, Rules reads a Sui address: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway, so the app uses GraphQL. If `SUI_ADDRESS` is set, the app reads it on open. The keys never reach the browser. Names are in [.env.example](.env.example).
 
-Without those env vars the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
+## Project
+
+```
+rulesync/
+├── public/
+│   ├── logo.svg              Mark
+│   └── favicon.svg
+├── src/
+│   ├── components/rulesync/
+│   │   ├── app.tsx           Screens, the loop, Mainnet controls
+│   │   └── marks.tsx         Logo and icons
+│   ├── lib/rulesync/
+│   │   ├── engine.ts         What the house repeats
+│   │   ├── memory.ts         Encode, decode, restore
+│   │   ├── chain.ts          Server functions the browser may call
+│   │   ├── chain.server.ts   Walrus and Tatum. Keys stay here.
+│   │   ├── seed.ts           Six weeks of the sample house
+│   │   └── types.ts
+│   ├── routes/               TanStack Start routes
+│   └── styles.css
+├── .env.example
+├── CODE_OF_CONDUCT.md
+├── LICENSE
+├── SECURITY.md
+└── package.json
+```
+
+The engine is in [src/lib/rulesync/engine.ts](src/lib/rulesync/engine.ts). The screen is in [src/components/rulesync/app.tsx](src/components/rulesync/app.tsx).
 
 ## Stack
 
 TanStack Start, React 19, Tailwind CSS 4. Type is [TikTok Sans](https://fonts.google.com/specimen/TikTok+Sans).
+
+## License and conduct
+
+[MIT](LICENSE). [Security](SECURITY.md) covers keys and reports. [Code of conduct](CODE_OF_CONDUCT.md) covers how to work on this repo.
