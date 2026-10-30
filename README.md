@@ -16,7 +16,15 @@
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-0e6b4f?style=flat-square"></a>
 </p>
 
-You set a floor. The house spends. RuleSync notices when groceries always go through alone, when one weekday keeps repeating, or when a second name shows up too fast to count. Adopt the rule, and the next spend is judged against it.
+## The problem
+
+A household writes a rule. Groceries alone under $18. Two names over $100. Then the house spends the other way, and the budget still shows the rule they typed.
+
+Budget apps remember the setting. They do not notice the habit. Groceries go through one person, never discussed, and land at $45. One weekday keeps repeating. A second name arrives too fast to be a real approval. Next month nobody can say which rule the house actually kept.
+
+Shared money makes the gap worse, because the memory of it lives in one browser. A new phone starts from zero. Put the chain on the screen and people stop opening the app.
+
+RuleSync learns the gap, asks the house to adopt it, and judges the next spend against the rule they kept. The chain stays off the screen. Walrus holds the house across sessions. Tatum only reads the wallet.
 
 Built for the [Tatum × Walrus Total Recall](https://tatum.io/hackathon/total-recall) hackathon, Consumer Finance track.
 
