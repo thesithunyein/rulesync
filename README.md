@@ -94,7 +94,7 @@ The Ash House sample is stored on Walrus Mainnet.
 |---|---|
 | Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
 | Namespace | `rulesync` |
-| Memories | 34. The house, 32 spends, and the adopted grocery rule |
+| Memories | 34 at seed: the house, 32 spends, and the adopted grocery rule. The app shows the live count for the namespace |
 | Relayer | `https://relayer.memory.walrus.xyz` |
 | Sui reads | `https://sui-mainnet.gateway.tatum.io/graphql` |
 

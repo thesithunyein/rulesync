@@ -1,4 +1,4 @@
-import { DEFAULT_STATED, type Decision, type Household, type LearnedRule, type StatedRules } from "./types";
+import { DEFAULT_STATED, type Decision, type Household, type LearnedRule, type StatedRules } from "./types.ts";
 
 const MARK = "||";
 
@@ -48,6 +48,21 @@ export function adoptMemory(rule: LearnedRule): string {
       weekday: rule.weekday,
     },
   );
+}
+
+export function isHouseMemory(text: string): boolean {
+  return text.startsWith("RuleSync house.");
+}
+
+export function uniqueLines(lines: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+  }
+  return out;
 }
 
 export function restoreFromLines(lines: string[]): {

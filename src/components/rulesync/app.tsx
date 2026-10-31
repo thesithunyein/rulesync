@@ -119,7 +119,7 @@ export function RuleSyncApp() {
         setHouse(restored.house);
         setStated(restored.stated);
         setDecisions(restored.decisions);
-        setChainNote("Restored from Mainnet");
+        setChainNote(`Restored ${restored.house.name} from Walrus`);
       } catch {
         if (!cancel) setChainNote("");
       }
@@ -174,10 +174,14 @@ export function RuleSyncApp() {
     setDecisions(nextDecisions);
     setView("home");
     setLogging(false);
-    publish([
-      houseMemory(next, nextStated),
-      ...nextDecisions.map(spendMemory),
-    ]);
+    const onChain = chainRef.current;
+    if (next.sample) {
+      if (onChain?.walrus && onChain.memories === 0) {
+        publish([houseMemory(next, nextStated), ...nextDecisions.map(spendMemory)]);
+      }
+      return;
+    }
+    publish([houseMemory(next, nextStated)]);
   }
 
   function adopt(rule: LearnedRule) {

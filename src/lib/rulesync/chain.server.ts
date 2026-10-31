@@ -1,4 +1,5 @@
 import { env } from "@/lib/env.server";
+import { isHouseMemory, uniqueLines } from "./memory";
 
 const NAMESPACE = env("MEMWAL_NAMESPACE") ?? "rulesync";
 const RELAYER = env("MEMWAL_SERVER_URL") ?? "https://relayer.memory.walrus.xyz";
@@ -61,16 +62,27 @@ export async function rememberLines(texts: string[]): Promise<{ ok: boolean; wro
   }
 }
 
+const HOUSE_QUERY = "RuleSync house household members alone two names written rule";
+const BROAD_QUERY = "RuleSync spend adopted rule groceries";
+const RECALL_LIMIT = 100;
+
 export async function recallLines(): Promise<{ ok: boolean; lines: string[]; error?: string }> {
   if (!walrusReady()) return { ok: false, lines: [], error: "Walrus is not configured" };
   try {
     const mem = await client();
-    const result = await mem.recall({
-      query: "RuleSync house spend adopted rule groceries",
-      limit: 40,
-      namespace: NAMESPACE,
-    });
-    return { ok: true, lines: result.results.map((hit) => hit.text).filter(Boolean) };
+    const [house, broad] = await Promise.all([
+      mem.recall({ query: HOUSE_QUERY, limit: 8, namespace: NAMESPACE }),
+      mem.recall({ query: BROAD_QUERY, limit: RECALL_LIMIT, namespace: NAMESPACE }),
+    ]);
+    let lines = uniqueLines([
+      ...house.results.map((hit) => hit.text),
+      ...broad.results.map((hit) => hit.text),
+    ]);
+    if (!lines.some(isHouseMemory)) {
+      const wide = await mem.recall({ query: "RuleSync house", limit: RECALL_LIMIT, namespace: NAMESPACE });
+      lines = uniqueLines([...wide.results.map((hit) => hit.text), ...lines]);
+    }
+    return { ok: true, lines };
   } catch (err) {
     return { ok: false, lines: [], error: err instanceof Error ? err.message : "Recall failed" };
   }
