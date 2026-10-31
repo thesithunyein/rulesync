@@ -99,7 +99,7 @@ export function RuleSyncApp() {
     let cancel = false;
     const giveUp = window.setTimeout(() => {
       if (!cancel) setRestoring(false);
-    }, 12_000);
+    }, 20_000);
     void (async () => {
       try {
         const status = await getChainStatus();
