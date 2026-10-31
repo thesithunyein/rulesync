@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-0e6b4f?style=flat-square"></a>
   <a href="https://tatum.io/hackathon/total-recall"><img alt="Consumer Finance track" src="https://img.shields.io/badge/track-Consumer%20Finance-1c1915?style=flat-square"></a>
-  <a href="https://docs.wal.app"><img alt="Walrus Mainnet" src="https://img.shields.io/badge/Walrus-34%20memories-0e6b4f?style=flat-square"></a>
+  <a href="https://docs.wal.app"><img alt="Walrus Mainnet" src="https://img.shields.io/badge/Walrus-Mainnet-0e6b4f?style=flat-square"></a>
   <a href="https://sui.io"><img alt="Sui Mainnet" src="https://img.shields.io/badge/Sui-Mainnet-1c1915?style=flat-square"></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-0e6b4f?style=flat-square"></a>
 </p>
@@ -94,7 +94,7 @@ The Ash House sample is stored on Walrus Mainnet.
 |---|---|
 | Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
 | Namespace | `rulesync` |
-| Memories | 34 at seed: the house, 32 spends, and the adopted grocery rule. The app shows the live count for the namespace |
+| Memories | 34 at seed: the house, 32 spends, and the adopted grocery rule. The Rules screen shows the live count for the namespace |
 | Relayer | `https://relayer.memory.walrus.xyz` |
 | Sui reads | `https://sui-mainnet.gateway.tatum.io/graphql` |
 

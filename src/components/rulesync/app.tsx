@@ -66,6 +66,7 @@ export function RuleSyncApp() {
   const [stated, setStated] = useState<StatedRules>(DEFAULT_STATED);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [view, setView] = useState<"home" | "rules">("home");
   const [logging, setLogging] = useState(false);
   const [chain, setChain] = useState<ChainStatus | null>(null);
@@ -83,6 +84,8 @@ export function RuleSyncApp() {
       setHouse(saved.house);
       setStated({ ...DEFAULT_STATED, ...saved.stated, caps: saved.stated?.caps ?? {} });
       setDecisions(saved.decisions ?? []);
+    } else {
+      setRestoring(true);
     }
     setHydrated(true);
   }, []);
@@ -94,6 +97,9 @@ export function RuleSyncApp() {
 
   useEffect(() => {
     let cancel = false;
+    const giveUp = window.setTimeout(() => {
+      if (!cancel) setRestoring(false);
+    }, 12_000);
     void (async () => {
       try {
         const status = await getChainStatus();
@@ -111,9 +117,14 @@ export function RuleSyncApp() {
             }
           }
         }
-        if (!status.walrus || houseRef.current) return;
+        if (!status.walrus || houseRef.current) {
+          if (!cancel) setRestoring(false);
+          return;
+        }
         const recalled = await recallHouse();
-        if (cancel || !recalled.ok || houseRef.current) return;
+        if (cancel) return;
+        setRestoring(false);
+        if (!recalled.ok || houseRef.current) return;
         const restored = restoreFromLines(recalled.lines);
         if (!restored) return;
         setHouse(restored.house);
@@ -121,11 +132,17 @@ export function RuleSyncApp() {
         setDecisions(restored.decisions);
         setChainNote(`Restored ${restored.house.name} from Walrus`);
       } catch {
-        if (!cancel) setChainNote("");
+        if (!cancel) {
+          setChainNote("");
+          setRestoring(false);
+        }
+      } finally {
+        window.clearTimeout(giveUp);
       }
     })();
     return () => {
       cancel = true;
+      window.clearTimeout(giveUp);
     };
   }, []);
 
@@ -232,6 +249,14 @@ export function RuleSyncApp() {
 
   if (!hydrated) {
     return <main className="min-h-screen bg-paper" />;
+  }
+
+  if (!house && restoring) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-paper text-ink">
+        <p className="rise font-display text-2xl text-mist">Waking the house from Walrus…</p>
+      </main>
+    );
   }
 
   if (!house) {

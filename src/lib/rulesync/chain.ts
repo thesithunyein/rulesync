@@ -20,8 +20,12 @@ export const rememberLines = createServerFn({ method: "POST" })
     if (!input || !Array.isArray(input.texts) || input.texts.length === 0 || input.texts.length > 20) {
       throw new Error("Send 1 to 20 memories");
     }
-    if (input.texts.some((t) => typeof t !== "string" || t.length === 0 || t.length > 2000)) {
-      throw new Error("Memory text is too long");
+    if (
+      input.texts.some(
+        (t) => typeof t !== "string" || t.length === 0 || t.length > 2000 || !t.startsWith("RuleSync "),
+      )
+    ) {
+      throw new Error("Only RuleSync records can be written");
     }
     return { texts: input.texts };
   })
