@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RuleSync">
-  <rect width="64" height="64" fill="#1c1915"/>
-  <path fill="#f6f3ee" fill-rule="evenodd" d="M14 15 H38 A9 9 0 0 1 38 33 H14 Z M44 33 m-7.5 0 a7.5 7.5 0 1 0 15 0 a7.5 7.5 0 1 0 -15 0"/>
-  <path fill="#f6f3ee" d="M14 41 H33 L49 55 H14 Z"/>
-</svg>
