@@ -240,7 +240,7 @@ export function RuleSyncApp() {
     if (decisions.some((d) => d.id === id)) return;
     setDraft({
       id,
-      amount: Math.round(tx.amount * 100) / 100,
+      amount: Math.round(tx.amount * 1e6) / 1e6,
       merchant: `Sui send ${tx.digest.slice(0, 6)}`,
       at: tx.at,
     });
