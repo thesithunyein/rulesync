@@ -95,7 +95,7 @@ export function restoreFromLines(lines: string[]): {
     }
     if (row.kind === "spend") {
       const d = row.payload as Decision;
-      if (d?.id && typeof d.amount === "number") decisions.set(d.id, d);
+      if (d?.id && typeof d.amount === "number" && d.amount > 0) decisions.set(d.id, d);
     }
     if (row.kind === "adopt") {
       const rule = row.payload as {

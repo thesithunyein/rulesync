@@ -818,7 +818,13 @@ function MemoryPanel({ count }: { count: number }) {
     };
   }, [count]);
 
-  const rows = (lines ?? []).slice(0, 12).map((text, i) => {
+  const shown = (lines ?? []).filter((text) => {
+    const row = decodeMemory(text);
+    if (row?.kind !== "spend") return true;
+    const amount = (row.payload as { amount?: number })?.amount;
+    return typeof amount === "number" && amount > 0;
+  });
+  const rows = shown.slice(0, 12).map((text, i) => {
     const cut = text.lastIndexOf("||");
     const sentence = (cut > 0 ? text.slice(0, cut) : text).replace(/^RuleSync \w+\.\s*/, "");
     const decoded = decodeMemory(text);
@@ -845,9 +851,9 @@ function MemoryPanel({ count }: { count: number }) {
               </li>
             ))}
           </ul>
-          {lines !== null && lines.length > rows.length && (
+          {shown.length > rows.length && (
             <p className="mt-2 text-xs text-mist">
-              Showing {rows.length} of {lines.length} recalled rows.
+              Showing {rows.length} of {shown.length} recalled rows.
             </p>
           )}
         </>

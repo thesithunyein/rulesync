@@ -66,6 +66,14 @@ describe("restoreFromLines", () => {
   it("fails closed when recall did not surface the house line", () => {
     assert.equal(restoreFromLines([spendMemory(spend), adoptMemory(rule)]), null);
   });
+
+  it("drops spend records without a positive amount", () => {
+    const zero = { ...spend, id: "zero", amount: 0 };
+    const restored = restoreFromLines([houseMemory(house, DEFAULT_STATED), spendMemory(zero)]);
+
+    assert.ok(restored);
+    assert.deepEqual(restored.decisions, []);
+  });
 });
 
 describe("uniqueLines", () => {
