@@ -14,8 +14,16 @@ import {
   RulesMark,
 } from "@/components/rulesync/marks";
 import { SEED } from "@/lib/rulesync/seed";
-import { getChainStatus, readSui, recallHouse, rememberLines, type ChainStatus, type SuiTransfer } from "@/lib/rulesync/chain";
-import { adoptMemory, houseMemory, restoreFromLines, spendMemory } from "@/lib/rulesync/memory";
+import {
+  getChainStatus,
+  listMemories,
+  readSui,
+  recallHouse,
+  rememberLines,
+  type ChainStatus,
+  type SuiTransfer,
+} from "@/lib/rulesync/chain";
+import { adoptMemory, decodeMemory, houseMemory, restoreFromLines, spendMemory } from "@/lib/rulesync/memory";
 import { buildMemories, headline, judgeSpend, learnUpTo } from "@/lib/rulesync/engine";
 import {
   CATEGORIES,
@@ -41,6 +49,8 @@ type Saved = {
   stated: StatedRules;
   decisions: Decision[];
 };
+
+type ImportDraft = { id: string; amount: number; merchant: string; at: string };
 
 function loadSaved(): Saved | null {
   try {
@@ -75,6 +85,7 @@ export function RuleSyncApp() {
   const [suiBalance, setSuiBalance] = useState<number | null>(null);
   const [suiTransfers, setSuiTransfers] = useState<SuiTransfer[]>([]);
   const [suiError, setSuiError] = useState("");
+  const [draft, setDraft] = useState<ImportDraft | null>(null);
   const houseRef = useRef<Household | null>(null);
   const chainRef = useRef<ChainStatus | null>(null);
 
@@ -219,8 +230,21 @@ export function RuleSyncApp() {
   function addDecision(next: Decision) {
     setDecisions((prev) => [...prev, next]);
     setLogging(false);
+    setDraft(null);
     setView("home");
     publish([spendMemory(next)]);
+  }
+
+  function importTransfer(tx: SuiTransfer) {
+    const id = `sui-${tx.digest}`;
+    if (decisions.some((d) => d.id === id)) return;
+    setDraft({
+      id,
+      amount: Math.round(tx.amount * 100) / 100,
+      merchant: `Sui send ${tx.digest.slice(0, 6)}`,
+      at: tx.at,
+    });
+    setLogging(true);
   }
 
   function startOver() {
@@ -291,6 +315,7 @@ export function RuleSyncApp() {
   }
 
   const recent = [...decisions].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+  const importedDigests = decisions.filter((d) => d.id.startsWith("sui-")).map((d) => d.id.slice(4));
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -402,6 +427,8 @@ export function RuleSyncApp() {
             suiBalance={suiBalance}
             suiTransfers={suiTransfers}
             suiError={suiError}
+            importedDigests={importedDigests}
+            onImport={importTransfer}
             onReadSui={() => {
               setSuiError("");
               void readSui({ data: { address: suiAddress.trim() } })
@@ -425,7 +452,10 @@ export function RuleSyncApp() {
         <div className="mx-auto max-w-lg">
           <button
             type="button"
-            onClick={() => setLogging(true)}
+            onClick={() => {
+              setDraft(null);
+              setLogging(true);
+            }}
             className="press inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-medium text-accent-ink"
           >
             <PlusMark />
@@ -439,7 +469,11 @@ export function RuleSyncApp() {
         house={house}
         stated={stated}
         rules={rules}
-        onClose={() => setLogging(false)}
+        draft={draft}
+        onClose={() => {
+          setLogging(false);
+          setDraft(null);
+        }}
         onSave={addDecision}
       />
     </div>
@@ -599,6 +633,8 @@ function RulesView({
   suiBalance,
   suiTransfers,
   suiError,
+  importedDigests,
+  onImport,
   onReadSui,
 }: {
   stated: StatedRules;
@@ -616,6 +652,8 @@ function RulesView({
   suiBalance: number | null;
   suiTransfers: SuiTransfer[];
   suiError: string;
+  importedDigests: string[];
+  onImport: (tx: SuiTransfer) => void;
   onReadSui: () => void;
 }) {
   return (
@@ -716,16 +754,103 @@ function RulesView({
             </p>
           )}
           {suiTransfers.length > 0 && (
-            <ul className="mt-3 divide-y divide-line text-sm">
-              {suiTransfers.slice(0, 6).map((tx) => (
-                <li key={tx.digest} className="flex justify-between gap-4 py-3">
-                  <span className="truncate text-mist">{tx.digest.slice(0, 10)}</span>
-                  <span className="tabular-nums">{tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="mt-4 text-xs text-mist">Sent transfers, read by Tatum. Import one to make it a spend the house remembers.</p>
+              <ul className="mt-2 divide-y divide-line text-sm">
+                {suiTransfers.slice(0, 6).map((tx) => {
+                  const imported = importedDigests.includes(tx.digest);
+                  return (
+                    <li key={tx.digest} className="flex items-center justify-between gap-4 py-3">
+                      <span className="truncate text-mist">{tx.digest.slice(0, 10)}</span>
+                      <span className="flex items-center gap-3">
+                        <span className="tabular-nums">
+                          {tx.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI
+                        </span>
+                        {imported ? (
+                          <span className="flex items-center gap-1 text-xs text-mist">
+                            <CheckMark />
+                            Imported
+                          </span>
+                        ) : (
+                          <button type="button" onClick={() => onImport(tx)} className="press min-h-11 text-xs text-accent">
+                            Import
+                          </button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </form>
+      )}
+      {walrus && <MemoryPanel count={memories} />}
+    </section>
+  );
+}
+
+function MemoryPanel({ count }: { count: number }) {
+  const [lines, setLines] = useState<string[] | null>(null);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    let cancel = false;
+    setLines(null);
+    setNote("");
+    void listMemories()
+      .then((result) => {
+        if (cancel) return;
+        if (!result.ok) {
+          setLines([]);
+          setNote(result.error ?? "Walrus did not answer");
+          return;
+        }
+        setLines(result.lines);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setLines([]);
+        setNote("Walrus did not answer");
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [count]);
+
+  const rows = (lines ?? []).slice(0, 12).map((text, i) => {
+    const cut = text.lastIndexOf("||");
+    const sentence = (cut > 0 ? text.slice(0, cut) : text).replace(/^RuleSync \w+\.\s*/, "");
+    const decoded = decodeMemory(text);
+    return { key: `${decoded?.kind ?? "row"}-${i}`, kind: decoded?.kind ?? "row", sentence };
+  });
+
+  return (
+    <section className="mt-10">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-2xl">Memory on Walrus</h2>
+        <p className="text-xs text-mist">{count} on Mainnet</p>
+      </div>
+      {lines === null ? (
+        <p className="mt-3 text-sm text-mist">Reading Walrus…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-3 text-sm text-mist">{note || "Nothing on Walrus yet."}</p>
+      ) : (
+        <>
+          <ul className="mt-3 divide-y divide-line">
+            {rows.map((row) => (
+              <li key={row.key} className="flex gap-3 py-3 text-sm">
+                <span className="mt-0.5 h-fit shrink-0 rounded-full bg-panel-2 px-2 py-0.5 text-xs text-mist">{row.kind}</span>
+                <span className="min-w-0">{row.sentence}</span>
+              </li>
+            ))}
+          </ul>
+          {lines !== null && lines.length > rows.length && (
+            <p className="mt-2 text-xs text-mist">
+              Showing {rows.length} of {lines.length} recalled rows.
+            </p>
+          )}
+        </>
       )}
     </section>
   );
@@ -736,6 +861,7 @@ function LogSheet({
   house,
   stated,
   rules,
+  draft,
   onClose,
   onSave,
 }: {
@@ -743,6 +869,7 @@ function LogSheet({
   house: Household;
   stated: StatedRules;
   rules: LearnedRule[];
+  draft: ImportDraft | null;
   onClose: () => void;
   onSave: (d: Decision) => void;
 }) {
@@ -758,6 +885,17 @@ function LogSheet({
   useEffect(() => {
     setMember(house.members[0] ?? "");
   }, [house.members]);
+
+  useEffect(() => {
+    if (!open || !draft) return;
+    setAmount(String(draft.amount));
+    setMerchant(draft.merchant);
+    const day = new Date(draft.at);
+    setDate(Number.isNaN(day.getTime()) ? todayInput() : day.toISOString().slice(0, 10));
+    setCategory("other");
+    setDiscussed(false);
+    setSecond("");
+  }, [open, draft]);
 
   const n = Number(amount);
   const weekday = weekdayFromDate(date);
@@ -783,7 +921,7 @@ function LogSheet({
     if (!verdict || !merchant.trim()) return;
     const at = new Date(`${date}T12:00:00`).toISOString();
     onSave({
-      id: `you-${Date.now()}`,
+      id: draft?.id ?? `you-${Date.now()}`,
       week: weekOf(at, house.startedAt),
       weekday,
       at,
@@ -847,6 +985,11 @@ function LogSheet({
             className="mt-1 min-h-11 w-full bg-transparent text-lg outline-none placeholder:text-line"
           />
         </label>
+        {draft && (
+          <p className="mt-2 text-xs text-mist">
+            Prefilled from a Tatum transfer, in SUI. Set who spent it and what it was for.
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           {house.members.map((person) => (
             <button

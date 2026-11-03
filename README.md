@@ -24,7 +24,7 @@ Budget apps remember the setting. They do not notice the habit. Groceries go thr
 
 Shared money makes the gap worse, because the memory of it lives in one browser. A new phone starts from zero. Put the chain on the screen and people stop opening the app.
 
-RuleSync learns the gap, asks the house to adopt it, and judges the next spend against the rule they kept. The chain stays off the screen. Walrus holds the house across sessions. Tatum only reads the wallet.
+RuleSync learns the gap, asks the house to adopt it, and judges the next spend against the rule they kept. The chain stays off the screen. Walrus holds the house across sessions. Tatum reads the wallet, and a transfer can be imported into the ledger as a spend.
 
 Built for the [Tatum × Walrus Total Recall](https://tatum.io/hackathon/total-recall) hackathon, Consumer Finance track.
 
@@ -45,10 +45,12 @@ flowchart TD
   server --> walrus["Walrus Mainnet"]
   server --> tatum["Tatum Sui GraphQL"]
   tatum --> sui["Sui balance and transfers"]
+  sui --> import["Import as spend"]
+  import --> engine
   walrus --> fresh["Empty browser recalls the house"]
 ```
 
-The chain is not a screen. Walrus stores the house, the spends, and the adopted rules. Tatum only reads the household Sui address. Dollar spends never mix with the SUI balance.
+The chain is not a screen. Walrus stores the house, the spends, and the adopted rules. Tatum reads the household Sui address; any outgoing transfer can be imported as a spend, which then goes through the same engine and the same Walrus write. The balance stays labeled in SUI.
 
 ## Run
 
@@ -72,7 +74,9 @@ npm run build
 3. Adopt that rule.
 4. Open Rules. It is on the books.
 5. Log a grocery above the new cap. The verdict breaks.
-6. Export writes `rulesync.json` with the house, the spends, the rules, and the memory records.
+6. Open Rules, read the Sui address with Tatum, and import an outgoing transfer. It becomes a spend, gets judged like any other, and is written to Walrus. The row then shows Imported, so the same digest cannot land twice.
+7. The Memory on Walrus panel lists what Mainnet actually returns for the namespace.
+8. Export writes `rulesync.json` with the house, the spends, the rules, and the memory records.
 
 An empty house learns the same way once a pattern repeats. Nothing is pre-seeded unless you open the sample.
 
@@ -98,9 +102,9 @@ The Ash House sample is stored on Walrus Mainnet.
 | Relayer | `https://relayer.memory.walrus.xyz` |
 | Sui reads | `https://sui-mainnet.gateway.tatum.io/graphql` |
 
-A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, or pressing **Write to Mainnet** calls `remember`. The Rules screen shows the Mainnet count and the account id.
+A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, importing a Tatum transfer, or pressing **Write to Mainnet** calls `remember`. The Rules screen shows the Mainnet count, the account id, and the rows Walrus returns.
 
-If `TATUM_API_KEY` is set, Rules reads a Sui address: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway, so the app uses GraphQL. If `SUI_ADDRESS` is set, the app reads it on open. The keys never reach the browser. Names are in [.env.example](.env.example).
+If `TATUM_API_KEY` is set, Rules reads a Sui address: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway, so the app uses GraphQL. A transfer can be imported as a spend; the row is keyed by digest, so re-importing is a no-op. If `SUI_ADDRESS` is set, the app reads it on open. The keys never reach the browser. Names are in [.env.example](.env.example).
 
 ## Project
 

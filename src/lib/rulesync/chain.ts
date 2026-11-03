@@ -39,6 +39,11 @@ export const recallHouse = createServerFn({ method: "POST" }).handler(async () =
   return recallLines();
 });
 
+export const listMemories = createServerFn({ method: "POST" }).handler(async () => {
+  const { listMemories: list } = await import("./chain.server");
+  return list();
+});
+
 export const readSui = createServerFn({ method: "POST" })
   .inputValidator((input: { address: string }) => {
     const address = input?.address?.trim() ?? "";
