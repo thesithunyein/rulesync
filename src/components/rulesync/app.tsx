@@ -934,7 +934,7 @@ function LogSheet({
       member,
       category,
       merchant: merchant.trim(),
-      amount: Math.round(n * 100) / 100,
+      amount: Math.round(n * 1e6) / 1e6,
       discussed,
       approvals,
       secondSignDelayMin: second ? Number(delay) || 0 : null,
