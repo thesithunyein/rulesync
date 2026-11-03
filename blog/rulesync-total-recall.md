@@ -1,0 +1,127 @@
+# RuleSync: Teaching Household Budgets to Remember the Rules We Actually Keep
+
+A household writes down a rule: groceries alone, under $18. Six weeks later groceries are landing at $45, through one person, never discussed. The budget screen still says $18. Nobody lied. The rule on paper just stopped describing the house.
+
+RuleSync is a spending app for shared money that notices that gap, asks the house to adopt the rule it actually keeps, and then judges the next spend against both.
+
+- Live demo: https://rulesync.sithunyein.com
+- Repository: https://github.com/thesithunyein/rulesync
+
+## The loop
+
+Written rule, observed pattern, proposed lived rule, adoption, judgment of the next spend.
+
+![RuleSync home screen showing the written floor and the lived rule](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/home.png)
+
+Open the sample house (Alex, Sam, and Max, six weeks, 32 spends, $1,472) and the home screen states the disagreement in one line: "Two names over $100 is not really two people." Adopt it and the rule moves onto the books. Log a grocery above the adopted cap and the verdict tells you which rule just broke, the written one or the lived one.
+
+None of this needs a wallet signature or a token. The chain stays off the screen.
+
+## How it learns
+
+Each pattern needs repetition before it is allowed to speak. Nothing is inferred from a single spend, and confidence is capped at `count / 4`, so a rule seen four times is as sure as a rule seen forty.
+
+| Pattern | What has to be true |
+|---|---|
+| Solo cap | One category, four or more spends, one name, never discussed, top amount at least 1.5x the written floor |
+| Rhythm | One weekday holds at least 75% of a category across three or more weeks, with a tight spread |
+| Allowance | One person makes at least 65% of a category across four or more purchases |
+| Never discussed | Four or more spends under the floor, none of them discussed |
+| False dual | Four or more spends above the two-name threshold, with 75% of second signatures inside three minutes |
+
+On the sample house that produces seven lived rules, including "Friday is fast food, $33 on average," "Groceries actually reaches $45," "79% of Max's money goes to games," and "Second signature within 3 minutes in 4 of 5."
+
+![Rules screen with the learned rules, adopted rule, Mainnet count, and Tatum reads](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/rules.png)
+
+## What gets remembered
+
+Three kinds of records go to Walrus, each as one line of text with a JSON payload after a `||` marker:
+
+| Kind | What it carries | Why it is stored |
+|---|---|---|
+| `house` | Name, members, written floor, two-name threshold | Without it there is no house to restore into |
+| `spend` | Member, amount, category, merchant, date, discussed, approvals, second-sign delay | The engine needs the raw decisions, not today's conclusions |
+| `adopt` | Which lived rule the house accepted, and the cap or flag it implies | Adoption is a decision, so it must survive the browser |
+
+```ts
+`RuleSync ${kind}. ${sentence} ||${JSON.stringify(payload)}`
+```
+
+The sentence is for recall and for a human reading the namespace. The payload is what rebuilds the state exactly. A line that cannot be decoded is ignored, so a malformed memory cannot corrupt the house.
+
+Rules the house has not adopted are recomputed from the restored spends. That keeps one source of truth: decisions and adoptions are memory, everything else is derived.
+
+## Restoring a house into an empty browser
+
+This is the part that matters. Everything above follows the house, not the browser. A new laptop, a cleared cache, or a second phone is where a shared budget normally dies.
+
+Writes go to Walrus Mainnet as the house changes. The sample seeds the namespace once, on the first open while it is still empty. After that, logging a spend writes that spend, adopting a rule writes the adoption, and starting a new house writes its house record. Writes are batched and carry an idempotency key so a retry does not duplicate a record.
+
+On a cold load the app recovers the namespace before it shows anything to create, then rebuilds the household, the spends, and the adopted rules. The screen says "Waking the house from Walrus" while it works, which takes three to nine seconds on a cold browser.
+
+`localStorage` cannot do this. It is per browser, it is a blob the app cannot query, and the second person in the household cannot see it. For shared money the memory has to live somewhere both people can reach, and it has to be readable by the app rather than by whoever remembers the password.
+
+## Tatum: reading Sui without putting the chain on screen
+
+The Rules screen reads a Sui address through Tatum's Sui GraphQL gateway at `https://sui-mainnet.gateway.tatum.io/graphql`. JSON-RPC is no longer available on that gateway, so the app queries for the SUI balance and the last eight outgoing transactions, and turns negative balance changes into a short transfer list.
+
+At the time of writing the demo wallet reads 2.1966 SUI with two recent transfers.
+
+All of this happens in server functions. The Tatum key and the Walrus private key stay on the server; the browser only receives the balance, the transfer list, and the public account id. We checked the built client bundles for the key names before shipping.
+
+Tatum is read only in this version. The transfer list is the natural next join point: an outgoing payment is a spend, and importing one into the loop would make the onchain read part of the decision instead of a panel beside it.
+
+## The bug we hit
+
+The first restore implementation asked Walrus one question with a limit of 40:
+
+```ts
+mem.recall({ query: "RuleSync house spend adopted rule groceries", limit: 40 })
+```
+
+Against a namespace holding a house record, 32 spends, and an adopted rule, the ranking returned 39 spends and one adoption and no house. Restore requires the house record, so it failed closed and the app quietly showed an empty setup screen in a fresh browser. Everything looked fine on a machine that already had local state.
+
+The fix was to stop trusting a single similarity query for a structured record:
+
+```ts
+const [house, broad] = await Promise.all([
+  mem.recall({ query: HOUSE_QUERY, limit: 8, namespace }),
+  mem.recall({ query: BROAD_QUERY, limit: 100, namespace }),
+]);
+if (!lines.some(isHouseMemory)) {
+  const wide = await mem.recall({ query: "RuleSync house", limit: 100, namespace });
+  lines = uniqueLines([...wide.results.map((h) => h.text), ...lines]);
+}
+```
+
+A focused query for the record that must exist, a broad query for the history, a de-duplicating merge, and a wide fallback if the house is still missing. Restore now works in a clean browser, and the app shows a restoring state instead of the setup form so nobody can start a second house by accident.
+
+The lesson is worth passing on: when a memory is a structured record rather than prose, query for it directly and treat similarity as a bonus, not a guarantee.
+
+## What is on Mainnet now
+
+| | |
+|---|---|
+| Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
+| Namespace | `rulesync` |
+| Relayer | `https://relayer.memory.walrus.xyz` |
+| Memory rows | 67 (34 distinct records: the house, 32 spends, and the adopted grocery rule) |
+| Sui reads | Tatum Sui GraphQL |
+
+The extra rows are from an early seeding test that wrote the sample more than once. Rows are de-duplicated by record id on restore, so the extra copies are harmless, and the count is the live count the app shows.
+
+## What is next
+
+- Import an outgoing Sui transfer as a spend, so Tatum feeds the loop instead of sitting beside it.
+- A memory panel that lists what the house remembers and which memory changed the last verdict.
+- A namespace per house, so two households can share the same account without mixing records.
+
+## Try it in a minute
+
+1. Open https://rulesync.sithunyein.com.
+2. Watch the house restore instead of starting from zero.
+3. Adopt the rule the home screen proposes.
+4. Log a grocery above the cap and read the verdict.
+5. Open Rules to see the Mainnet count and the Sui balance from Tatum.
+
+Built for the Tatum x Walrus Total Recall hackathon, Consumer Finance track.
