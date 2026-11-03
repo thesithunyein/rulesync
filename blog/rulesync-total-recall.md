@@ -31,7 +31,7 @@ Each pattern needs repetition before it is allowed to speak. Nothing is inferred
 
 On the sample house that produces seven lived rules, including "Friday is fast food, $33 on average," "Groceries actually reaches $45," "79% of Max's money goes to games," and "Second signature within 3 minutes in 4 of 5."
 
-![Rules screen with the learned rules, adopted rule, Mainnet count, and Tatum reads](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/rules.png)
+![Rules screen with the learned rules and the live Mainnet count](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/rules.png)
 
 ## What gets remembered
 
@@ -51,6 +51,8 @@ The sentence is for recall and for a human reading the namespace. The payload is
 
 Rules the house has not adopted are recomputed from the restored spends. That keeps one source of truth: decisions and adoptions are memory, everything else is derived.
 
+The Rules screen also lists the rows Walrus actually returns in a Memory on Walrus panel, so the memory is inspectable rather than implied. A record that cannot affect the ledger, such as a spend with a non-positive amount, is ignored on restore and hidden from the panel.
+
 ## Restoring a house into an empty browser
 
 This is the part that matters. Everything above follows the house, not the browser. A new laptop, a cleared cache, or a second phone is where a shared budget normally dies.
@@ -61,15 +63,19 @@ On a cold load the app recovers the namespace before it shows anything to create
 
 `localStorage` cannot do this. It is per browser, it is a blob the app cannot query, and the second person in the household cannot see it. For shared money the memory has to live somewhere both people can reach, and it has to be readable by the app rather than by whoever remembers the password.
 
-## Tatum: reading Sui without putting the chain on screen
+## Tatum: reading Sui, then importing a transfer
 
 The Rules screen reads a Sui address through Tatum's Sui GraphQL gateway at `https://sui-mainnet.gateway.tatum.io/graphql`. JSON-RPC is no longer available on that gateway, so the app queries for the SUI balance and the last eight outgoing transactions, and turns negative balance changes into a short transfer list.
 
 At the time of writing the demo wallet reads 2.1966 SUI with two recent transfers.
 
-All of this happens in server functions. The Tatum key and the Walrus private key stay on the server; the browser only receives the balance, the transfer list, and the public account id. We checked the built client bundles for the key names before shipping.
+A transfer is a spend that already happened. Each row has an Import action: it opens the log sheet with the amount, digest and date prefilled, the house picks the member and the category, and saving writes a normal spend to Walrus. The spend is keyed by digest, so importing the same transfer twice is a no-op and the row switches to Imported.
 
-Tatum is read only in this version. The transfer list is the natural next join point: an outgoing payment is a spend, and importing one into the loop would make the onchain read part of the decision instead of a panel beside it.
+That puts Tatum inside the loop instead of beside it. Read the chain, bring one transfer into the ledger, and the same engine and the same memory handle it like any spend the house logged by hand.
+
+![Tatum transfers with one imported spend, and the Memory on Walrus panel](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/memory.png)
+
+All of this happens in server functions. The Tatum key and the Walrus private key stay on the server; the browser only receives the balance, the transfer list, and the public account id. We checked the built client bundles for the key names before shipping.
 
 ## The bug we hit
 
@@ -105,16 +111,15 @@ The lesson is worth passing on: when a memory is a structured record rather than
 | Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
 | Namespace | `rulesync` |
 | Relayer | `https://relayer.memory.walrus.xyz` |
-| Memory rows | 67 (34 distinct records: the house, 32 spends, and the adopted grocery rule) |
+| Memory rows | 69 (36 distinct records: the house, 33 spends, the adopted grocery rule, and one superseded import row that restore ignores) |
 | Sui reads | Tatum Sui GraphQL |
 
 The extra rows are from an early seeding test that wrote the sample more than once. Rows are de-duplicated by record id on restore, so the extra copies are harmless, and the count is the live count the app shows.
 
 ## What is next
 
-- Import an outgoing Sui transfer as a spend, so Tatum feeds the loop instead of sitting beside it.
-- A memory panel that lists what the house remembers and which memory changed the last verdict.
 - A namespace per house, so two households can share the same account without mixing records.
+- A verdict that cites the exact memory row it used, not just the rule it came from.
 
 ## Try it in a minute
 
@@ -123,5 +128,7 @@ The extra rows are from an early seeding test that wrote the sample more than on
 3. Adopt the rule the home screen proposes.
 4. Log a grocery above the cap and read the verdict.
 5. Open Rules to see the Mainnet count and the Sui balance from Tatum.
+6. Import an outgoing transfer and watch it join the ledger as a spend.
+7. Scroll to Memory on Walrus and read the rows the house actually remembers.
 
 Built for the Tatum x Walrus Total Recall hackathon, Consumer Finance track.
