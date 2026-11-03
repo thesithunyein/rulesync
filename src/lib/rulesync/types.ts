@@ -110,7 +110,7 @@ export function money(n: number): string {
   return n.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: n % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: n % 1 === 0 ? 0 : n < 1 ? 4 : 2,
   });
 }
 
