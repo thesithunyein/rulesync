@@ -92,12 +92,14 @@ export async function listMemories(): Promise<{ ok: boolean; lines: string[]; er
   if (!walrusReady()) return { ok: false, lines: [], error: "Walrus is not configured" };
   try {
     const mem = await client();
-    const [house, broad] = await Promise.all([
+    const [house, adopt, broad] = await Promise.all([
       mem.recall({ query: HOUSE_QUERY, limit: 4, namespace: NAMESPACE }),
+      mem.recall({ query: "RuleSync adopt adopted rule on the books", limit: 6, namespace: NAMESPACE }),
       mem.recall({ query: "RuleSync spend adopted rule household", limit: 30, namespace: NAMESPACE }),
     ]);
     const lines = uniqueLines([
       ...house.results.map((hit) => hit.text),
+      ...adopt.results.map((hit) => hit.text),
       ...broad.results.map((hit) => hit.text),
     ]).filter((t) => t.startsWith("RuleSync "));
     return { ok: true, lines };
