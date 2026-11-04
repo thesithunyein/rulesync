@@ -217,8 +217,13 @@ export function RuleSyncApp() {
 
   useEffect(() => {
     if (!hydrated) return;
+    const key = storageKey(houseIdRef.current);
+    if (!house) {
+      localStorage.removeItem(key);
+      return;
+    }
     const payload: Saved = { house, stated, decisions };
-    localStorage.setItem(storageKey(houseIdRef.current), JSON.stringify(payload));
+    localStorage.setItem(key, JSON.stringify(payload));
   }, [house, stated, decisions, hydrated]);
 
   const week = decisions.reduce((m, d) => Math.max(m, d.week), 1);
