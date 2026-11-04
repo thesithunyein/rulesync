@@ -43,6 +43,24 @@ import {
 
 const STORAGE_KEY = "rulesync-v2";
 const SAMPLE_START = new Date(Date.UTC(2026, 8, 7, 12)).toISOString();
+const HOUSE_ID = /^[a-z0-9]{10}$/;
+const ID_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
+
+function newHouseId(): string {
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => ID_ALPHABET[b % ID_ALPHABET.length]).join("");
+}
+
+function houseIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const id = new URLSearchParams(window.location.search).get("h");
+  return id && HOUSE_ID.test(id) ? id : null;
+}
+
+function storageKey(houseId: string | null): string {
+  return houseId ? `${STORAGE_KEY}:${houseId}` : STORAGE_KEY;
+}
 
 type Saved = {
   house: Household | null;
@@ -52,9 +70,9 @@ type Saved = {
 
 type ImportDraft = { id: string; amount: number; merchant: string; at: string };
 
-function loadSaved(): Saved | null {
+function loadSaved(houseId: string | null): Saved | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(houseId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Saved;
     if (!parsed || !("house" in parsed)) return null;
@@ -86,11 +104,16 @@ export function RuleSyncApp() {
   const [suiTransfers, setSuiTransfers] = useState<SuiTransfer[]>([]);
   const [suiError, setSuiError] = useState("");
   const [draft, setDraft] = useState<ImportDraft | null>(null);
+  const [houseId, setHouseId] = useState<string | null>(null);
   const houseRef = useRef<Household | null>(null);
   const chainRef = useRef<ChainStatus | null>(null);
+  const houseIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const saved = loadSaved();
+    const id = houseIdFromUrl();
+    houseIdRef.current = id;
+    setHouseId(id);
+    const saved = loadSaved(id);
     if (saved) {
       setHouse(saved.house);
       setStated({ ...DEFAULT_STATED, ...saved.stated, caps: saved.stated?.caps ?? {} });
@@ -113,7 +136,7 @@ export function RuleSyncApp() {
     }, 20_000);
     void (async () => {
       try {
-        const status = await getChainStatus();
+        const status = await getChainStatus({ data: { houseId: houseIdRef.current } });
         if (cancel) return;
         setChain(status);
         if (status.suiAddress) setSuiAddress(status.suiAddress);
@@ -132,7 +155,7 @@ export function RuleSyncApp() {
           if (!cancel) setRestoring(false);
           return;
         }
-        const recalled = await recallHouse();
+        const recalled = await recallHouse({ data: { houseId: houseIdRef.current } });
         if (cancel) return;
         setRestoring(false);
         if (!recalled.ok || houseRef.current) return;
@@ -162,7 +185,7 @@ export function RuleSyncApp() {
     void (async () => {
       let ready = chainRef.current?.walrus ?? false;
       if (!chainRef.current) {
-        const status = await getChainStatus();
+        const status = await getChainStatus({ data: { houseId: houseIdRef.current } });
         chainRef.current = status;
         setChain(status);
         ready = status.walrus;
@@ -171,7 +194,7 @@ export function RuleSyncApp() {
       let wrote = 0;
       for (let i = 0; i < texts.length; i += 15) {
         const chunk = texts.slice(i, i + 15);
-        const result = await rememberLines({ data: { texts: chunk } });
+        const result = await rememberLines({ data: { texts: chunk, houseId: houseIdRef.current } });
         if (!result.ok) {
           console.warn("RuleSync memory write failed", result.error);
           setChainNote("Mainnet write did not go through");
@@ -179,7 +202,7 @@ export function RuleSyncApp() {
         }
         wrote += result.wrote;
       }
-      const status = await getChainStatus();
+      const status = await getChainStatus({ data: { houseId: houseIdRef.current } });
       setChain(status);
       setChainNote(wrote > 0 ? `${wrote} on Mainnet` : "");
     })().catch(() => setChainNote("Mainnet write did not go through"));
@@ -188,7 +211,7 @@ export function RuleSyncApp() {
   useEffect(() => {
     if (!hydrated) return;
     const payload: Saved = { house, stated, decisions };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(storageKey(houseIdRef.current), JSON.stringify(payload));
   }, [house, stated, decisions, hydrated]);
 
   const week = decisions.reduce((m, d) => Math.max(m, d.week), 1);
@@ -198,6 +221,13 @@ export function RuleSyncApp() {
   const lead = rules.find((r) => r.kind === "solo_cap" && !isAdopted(r, stated)) ?? null;
 
   function openHouse(next: Household, nextStated: StatedRules, nextDecisions: Decision[]) {
+    const nextId = next.sample ? null : newHouseId();
+    const url = new URL(window.location.href);
+    if (nextId) url.searchParams.set("h", nextId);
+    else url.searchParams.delete("h");
+    window.history.replaceState(null, "", url);
+    houseIdRef.current = nextId;
+    setHouseId(nextId);
     setHouse(next);
     setStated(nextStated);
     setDecisions(nextDecisions);
@@ -249,7 +279,12 @@ export function RuleSyncApp() {
   }
 
   function startOver() {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(houseIdRef.current));
+    houseIdRef.current = null;
+    setHouseId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("h");
+    window.history.replaceState(null, "", url);
     setHouse(null);
     setStated(DEFAULT_STATED);
     setDecisions([]);
@@ -352,7 +387,7 @@ export function RuleSyncApp() {
               {decisions.length === 0
                 ? "Nothing logged yet."
                 : `${decisions.length} spends · floor ${money(stated.soloLimit)} · two names over ${money(stated.dualAbove)}`}
-              {chain?.walrus
+              {chain?.walrus && chain.memories > 0
                 ? ` · Mainnet ${chain.memories}`
                 : ""}
               {chainNote ? ` · ${chainNote}` : ""}
@@ -409,6 +444,7 @@ export function RuleSyncApp() {
           <RulesView
             stated={stated}
             rules={rules}
+            houseId={houseId}
             onAdopt={adopt}
             onExport={exportFile}
             onReset={startOver}
@@ -621,6 +657,7 @@ function Field({
 function RulesView({
   stated,
   rules,
+  houseId,
   onAdopt,
   onExport,
   onReset,
@@ -640,6 +677,7 @@ function RulesView({
 }: {
   stated: StatedRules;
   rules: LearnedRule[];
+  houseId: string | null;
   onAdopt: (rule: LearnedRule) => void;
   onExport: () => void;
   onReset: () => void;
@@ -657,6 +695,23 @@ function RulesView({
   onImport: (tx: SuiTransfer) => void;
   onReadSui: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+  const invite =
+    houseId && typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname}?h=${houseId}`
+      : "";
+
+  function copyInvite() {
+    if (!invite || !navigator.clipboard) return;
+    void navigator.clipboard
+      .writeText(invite)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => undefined);
+  }
+
   return (
     <section className="mt-10">
       <h1 className="rise font-display text-4xl">Rules</h1>
@@ -725,9 +780,27 @@ function RulesView({
       </div>
       <p className="mt-2 text-xs text-mist">
         {walrus
-          ? `Mainnet ${memories}${accountId ? ` · ${accountId.slice(0, 10)}…` : ""}`
+          ? memories > 0
+            ? `Mainnet ${memories}${accountId ? ` · ${accountId.slice(0, 10)}…` : ""}`
+            : "Walrus is ready"
           : "Stays on this device until you export it."}
       </p>
+      {invite && (
+        <div className="mt-6">
+          <p className="text-xs text-mist">Invite link</p>
+          <div className="mt-1 flex items-center gap-3">
+            <code className="min-w-0 flex-1 truncate rounded-xl bg-panel-2 px-3 py-2 text-xs text-ink">
+              {invite}
+            </code>
+            <button type="button" onClick={copyInvite} className="press min-h-11 shrink-0 text-xs text-accent">
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-mist">
+            Anyone with this link opens this house and the same Walrus memory. Keep it in the household.
+          </p>
+        </div>
+      )}
       {tatum && (
         <form
           className="mt-8"
@@ -786,12 +859,12 @@ function RulesView({
           )}
         </form>
       )}
-      {walrus && <MemoryPanel count={memories} />}
+      {walrus && <MemoryPanel count={memories} houseId={houseId} />}
     </section>
   );
 }
 
-function MemoryPanel({ count }: { count: number }) {
+function MemoryPanel({ count, houseId }: { count: number; houseId: string | null }) {
   const [lines, setLines] = useState<string[] | null>(null);
   const [note, setNote] = useState("");
 
@@ -799,7 +872,7 @@ function MemoryPanel({ count }: { count: number }) {
     let cancel = false;
     setLines(null);
     setNote("");
-    void listMemories()
+    void listMemories({ data: { houseId } })
       .then((result) => {
         if (cancel) return;
         if (!result.ok) {

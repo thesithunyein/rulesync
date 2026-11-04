@@ -2,9 +2,16 @@ import { createHash } from "node:crypto";
 import { env } from "@/lib/env.server";
 import { isHouseMemory, uniqueLines } from "./memory";
 
-const NAMESPACE = env("MEMWAL_NAMESPACE") ?? "rulesync";
+const BASE_NAMESPACE = env("MEMWAL_NAMESPACE") ?? "rulesync";
 const RELAYER = env("MEMWAL_SERVER_URL") ?? "https://relayer.memory.walrus.xyz";
 const TATUM = "https://sui-mainnet.gateway.tatum.io/graphql";
+const HOUSE_ID = /^[a-z0-9]{10}$/;
+
+function namespaceFor(houseId?: string | null): string {
+  if (!houseId) return BASE_NAMESPACE;
+  if (!HOUSE_ID.test(houseId)) throw new Error("That is not a house id");
+  return `${BASE_NAMESPACE}-${houseId}`;
+}
 
 export type ChainStatus = {
   walrus: boolean;
@@ -18,17 +25,17 @@ function walrusReady(): boolean {
   return Boolean(env("MEMWAL_PRIVATE_KEY") && env("MEMWAL_ACCOUNT_ID"));
 }
 
-async function client() {
+async function client(houseId?: string | null) {
   const { MemWal } = await import("@mysten-incubation/memwal");
   return MemWal.create({
     key: env("MEMWAL_PRIVATE_KEY") ?? "",
     accountId: env("MEMWAL_ACCOUNT_ID") ?? "",
     serverUrl: RELAYER,
-    namespace: NAMESPACE,
+    namespace: namespaceFor(houseId),
   });
 }
 
-export async function chainStatus(): Promise<ChainStatus> {
+export async function chainStatus(houseId?: string | null): Promise<ChainStatus> {
   const raw = env("SUI_ADDRESS") ?? "";
   const base = {
     tatum: Boolean(env("TATUM_API_KEY")),
@@ -37,22 +44,27 @@ export async function chainStatus(): Promise<ChainStatus> {
   };
   if (!walrusReady()) return { walrus: false, memories: 0, ...base };
   try {
-    const mem = await client();
+    const space = namespaceFor(houseId);
+    const mem = await client(houseId);
     const page = await mem.listNamespaces();
-    const row = page.namespaces.find((ns) => ns.name === NAMESPACE);
+    const row = page.namespaces.find((ns) => ns.name === space);
     return { walrus: true, memories: row?.memory_count ?? 0, ...base };
   } catch {
     return { walrus: true, memories: 0, ...base };
   }
 }
 
-export async function rememberLines(texts: string[]): Promise<{ ok: boolean; wrote: number; error?: string }> {
+export async function rememberLines(
+  texts: string[],
+  houseId?: string | null,
+): Promise<{ ok: boolean; wrote: number; error?: string }> {
   if (!walrusReady()) return { ok: false, wrote: 0, error: "Walrus is not configured" };
   const batch = texts.map((t) => t.trim()).filter((t) => t.length > 0 && t.length <= 2000).slice(0, 20);
   if (batch.length === 0) return { ok: false, wrote: 0, error: "Nothing to write" };
   try {
-    const mem = await client();
-    const digest = createHash("sha256").update(batch.join("\n")).digest("hex").slice(0, 40);
+    const space = namespaceFor(houseId);
+    const mem = await client(houseId);
+    const digest = createHash("sha256").update(`${space}\n${batch.join("\n")}`).digest("hex").slice(0, 40);
     const done = await mem.rememberBulkAndWait(
       batch.map((text) => ({ text })),
       { timeoutMs: 90_000, idempotencyKey: `rulesync-${digest}` },
@@ -68,20 +80,21 @@ const HOUSE_QUERY = "RuleSync house household members alone two names written ru
 const BROAD_QUERY = "RuleSync spend adopted rule groceries";
 const RECALL_LIMIT = 100;
 
-export async function recallLines(): Promise<{ ok: boolean; lines: string[]; error?: string }> {
+export async function recallLines(houseId?: string | null): Promise<{ ok: boolean; lines: string[]; error?: string }> {
   if (!walrusReady()) return { ok: false, lines: [], error: "Walrus is not configured" };
   try {
-    const mem = await client();
+    const space = namespaceFor(houseId);
+    const mem = await client(houseId);
     const [house, broad] = await Promise.all([
-      mem.recall({ query: HOUSE_QUERY, limit: 8, namespace: NAMESPACE }),
-      mem.recall({ query: BROAD_QUERY, limit: RECALL_LIMIT, namespace: NAMESPACE }),
+      mem.recall({ query: HOUSE_QUERY, limit: 8, namespace: space }),
+      mem.recall({ query: BROAD_QUERY, limit: RECALL_LIMIT, namespace: space }),
     ]);
     let lines = uniqueLines([
       ...house.results.map((hit) => hit.text),
       ...broad.results.map((hit) => hit.text),
     ]);
     if (!lines.some(isHouseMemory)) {
-      const wide = await mem.recall({ query: "RuleSync house", limit: RECALL_LIMIT, namespace: NAMESPACE });
+      const wide = await mem.recall({ query: "RuleSync house", limit: RECALL_LIMIT, namespace: space });
       lines = uniqueLines([...wide.results.map((hit) => hit.text), ...lines]);
     }
     return { ok: true, lines };
@@ -90,14 +103,15 @@ export async function recallLines(): Promise<{ ok: boolean; lines: string[]; err
   }
 }
 
-export async function listMemories(): Promise<{ ok: boolean; lines: string[]; error?: string }> {
+export async function listMemories(houseId?: string | null): Promise<{ ok: boolean; lines: string[]; error?: string }> {
   if (!walrusReady()) return { ok: false, lines: [], error: "Walrus is not configured" };
   try {
-    const mem = await client();
+    const space = namespaceFor(houseId);
+    const mem = await client(houseId);
     const [house, adopt, broad] = await Promise.all([
-      mem.recall({ query: HOUSE_QUERY, limit: 4, namespace: NAMESPACE }),
-      mem.recall({ query: "RuleSync adopt adopted rule on the books", limit: 6, namespace: NAMESPACE }),
-      mem.recall({ query: "RuleSync spend adopted rule household", limit: 30, namespace: NAMESPACE }),
+      mem.recall({ query: HOUSE_QUERY, limit: 4, namespace: space }),
+      mem.recall({ query: "RuleSync adopt adopted rule on the books", limit: 6, namespace: space }),
+      mem.recall({ query: "RuleSync spend adopted rule household", limit: 30, namespace: space }),
     ]);
     const lines = uniqueLines([
       ...house.results.map((hit) => hit.text),

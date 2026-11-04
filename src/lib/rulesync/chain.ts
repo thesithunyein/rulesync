@@ -10,13 +10,23 @@ export type ChainStatus = {
 
 export type SuiTransfer = { digest: string; at: string; amount: number };
 
-export const getChainStatus = createServerFn({ method: "POST" }).handler(async (): Promise<ChainStatus> => {
-  const { chainStatus } = await import("./chain.server");
-  return chainStatus();
-});
+const HOUSE_ID = /^[a-z0-9]{10}$/;
+
+function houseOnly(input?: { houseId?: string | null } | null): { houseId: string | null } {
+  const houseId = input?.houseId ?? null;
+  if (houseId !== null && !HOUSE_ID.test(houseId)) throw new Error("That is not a house id");
+  return { houseId };
+}
+
+export const getChainStatus = createServerFn({ method: "POST" })
+  .inputValidator(houseOnly)
+  .handler(async ({ data }): Promise<ChainStatus> => {
+    const { chainStatus } = await import("./chain.server");
+    return chainStatus(data.houseId);
+  });
 
 export const rememberLines = createServerFn({ method: "POST" })
-  .inputValidator((input: { texts: string[] }) => {
+  .inputValidator((input: { texts: string[]; houseId?: string | null }) => {
     if (!input || !Array.isArray(input.texts) || input.texts.length === 0 || input.texts.length > 20) {
       throw new Error("Send 1 to 20 memories");
     }
@@ -27,22 +37,28 @@ export const rememberLines = createServerFn({ method: "POST" })
     ) {
       throw new Error("Only RuleSync records can be written");
     }
-    return { texts: input.texts };
+    const houseId = input.houseId ?? null;
+    if (houseId !== null && !HOUSE_ID.test(houseId)) throw new Error("That is not a house id");
+    return { texts: input.texts, houseId };
   })
   .handler(async ({ data }) => {
     const { rememberLines: write } = await import("./chain.server");
-    return write(data.texts);
+    return write(data.texts, data.houseId);
   });
 
-export const recallHouse = createServerFn({ method: "POST" }).handler(async () => {
-  const { recallLines } = await import("./chain.server");
-  return recallLines();
-});
+export const recallHouse = createServerFn({ method: "POST" })
+  .inputValidator(houseOnly)
+  .handler(async ({ data }) => {
+    const { recallLines } = await import("./chain.server");
+    return recallLines(data.houseId);
+  });
 
-export const listMemories = createServerFn({ method: "POST" }).handler(async () => {
-  const { listMemories: list } = await import("./chain.server");
-  return list();
-});
+export const listMemories = createServerFn({ method: "POST" })
+  .inputValidator(houseOnly)
+  .handler(async ({ data }) => {
+    const { listMemories: list } = await import("./chain.server");
+    return list(data.houseId);
+  });
 
 export const readSui = createServerFn({ method: "POST" })
   .inputValidator((input: { address: string }) => {
