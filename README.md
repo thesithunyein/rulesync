@@ -106,6 +106,16 @@ A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house in
 
 If `TATUM_API_KEY` is set, Rules reads a Sui address: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway, so the app uses GraphQL. A transfer can be imported as a spend; the row is keyed by digest, so re-importing is a no-op. If `SUI_ADDRESS` is set, the app reads it on open. The keys never reach the browser. Names are in [.env.example](.env.example).
 
+## Houses, links, and closing
+
+A new house gets a ten character id and its own namespace, `rulesync-<id>`, so two households on one Walrus account never mix rows. Rules shows an invite link with the id in the query string; a second phone opens the same house and the same memory.
+
+**Close this house** writes one more house record with a `closedAt` mark, then forgets the local copy. Restore treats the mark as final, so the invite link stops opening the house even after a cache clear. It does not erase blobs: the relayer client has no delete call and Walrus history is append-only, so rows already written stay, encrypted.
+
+## Storage and encryption
+
+Walrus Memory encrypts rows with Seal before they reach Walrus and decrypts them inside the relayer. The delegate key stays in the server environment and never reaches the browser. This is encryption at rest, not end to end: a server holding the delegate key can read a house while it is open, and anyone holding the invite link can open it. End to end would mean encrypting on the device under a key only the household holds, with client side embeddings, which is a different design.
+
 ## Project
 
 ```

@@ -116,10 +116,20 @@ The lesson is worth passing on: when a memory is a structured record rather than
 
 The extra rows are from an early seeding test that wrote the sample more than once. Rows are de-duplicated by record id on restore, so the extra copies are harmless, and the count is the live count the app shows.
 
+## Houses, links, and closing
+
+A new house gets a ten character id and its own namespace, `rulesync-<id>`, so two households on one Walrus account never mix rows. Rules shows an invite link with the id in the query string, and a second phone opens the same house and the same memory.
+
+Closing a house writes one last house record with a `closedAt` mark. Restore treats that mark as final, so the invite link stops opening the house even after a cache clear. It does not erase the blobs. The relayer client has no delete call and Walrus history is append-only, so the rows already written stay, encrypted. Saying that plainly is better than shipping a delete button that lies.
+
+## What encryption covers
+
+Walrus Memory runs inside a TEE and uses Seal to encrypt rows before they reach Walrus. Recall decrypts them inside the relayer. The delegate key stays in the server environment and never reaches the browser, and the browser only receives the public account id. That is encryption at rest with a scoped handle, not end-to-end encryption. A server holding the delegate key can read a house while it is open, and anyone holding the invite link can open it. End to end would mean encrypting on the device under a key only the household holds, with client side embeddings, which is a different design rather than a setting.
+
 ## What is next
 
-- A namespace per house, so two households can share the same account without mixing records.
 - A verdict that cites the exact memory row it used, not just the rule it came from.
+- A weekly recap written by the house from its own rows, not typed by a person.
 
 ## Try it in a minute
 
