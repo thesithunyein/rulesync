@@ -106,6 +106,30 @@ describe("restoreFromLines", () => {
     assert.equal(restored.stated.caps.groceries, 55);
   });
 
+  it("keeps a cap carried by the newest house row over a stale adopt row", () => {
+    const raised = { ...DEFAULT_STATED, caps: { groceries: 55 } };
+    const restored = restoreFromLines([
+      houseMemory(house, raised, "2026-11-04T09:00:00.000Z"),
+      adoptMemory(rule, "2026-11-01T00:00:00.000Z"),
+    ]);
+
+    assert.ok(restored);
+    assert.equal(restored.stated.caps.groceries, 55);
+  });
+
+  it("uses the newest house row when recall returns an older one last", () => {
+    const older = { ...DEFAULT_STATED, caps: { groceries: 42 } };
+    const newer = { ...DEFAULT_STATED, caps: { groceries: 55 }, soloLimit: 20 };
+    const restored = restoreFromLines([
+      houseMemory(house, newer, "2026-11-04T09:00:00.000Z"),
+      houseMemory(house, older, "2026-11-01T09:00:00.000Z"),
+    ]);
+
+    assert.ok(restored);
+    assert.equal(restored.stated.caps.groceries, 55);
+    assert.equal(restored.stated.soloLimit, 20);
+  });
+
   it("does not duplicate a repeated rhythm adoption", () => {
     const rhythm: LearnedRule = {
       id: "rhythm-groceries-5",

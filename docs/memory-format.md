@@ -18,7 +18,7 @@ RuleSync <kind>. <sentence> ||<json>
 
 | Kind | Written when | Identity |
 |---|---|---|
-| `house` | A house is created or closed | one per house; the last decoded row wins |
+| `house` | A house is created, a cap is adopted or revised, or the house is closed | one per house; the newest `at` wins |
 | `spend` | A spend is saved or imported | `id` is the decision id; a repeat replaces the earlier payload |
 | `adopt` | A rule is adopted or a cap is revised | `id` is the rule id; a repeat is a revision |
 | `outcome` | A spend is judged | `id` is `out-<decisionId>`; one outcome per spend |
@@ -27,20 +27,21 @@ RuleSync <kind>. <sentence> ||<json>
 
 1. A restore needs a `house` row. Without one it fails closed.
 2. Any `house` row with `closedAt` makes the whole restore fail closed. A closed house is final.
-3. `spend` rows with a missing id or a non-positive amount are ignored.
-4. `adopt` rows are applied in ascending `at`. Rows without `at` apply first, in recall order. This makes a cap revision deterministic even when recall returns rows out of order.
-5. `outcome` rows are kept by id, so a retry cannot double count.
-6. Rules that were never adopted are recomputed from spends. Only decisions and outcomes come from memory.
+3. The newest `house` row by `at` supplies `soloLimit`, `dualAbove`, and `caps`. A row without `at` applies before any row with one.
+4. `spend` rows with a missing id or a non-positive amount are ignored.
+5. `adopt` rows are applied in ascending `at`. Rows without `at` apply first, in recall order. A cap in the `caps` of the newest house row wins over any `adopt` row for the same category, so the number on the books does not depend on recall ranking.
+6. `outcome` rows are kept by id, so a retry cannot double count.
+7. Rules that were never adopted are recomputed from spends. Only decisions, adoptions and outcomes come from memory.
 
 ## Payloads
 
 House:
 
 ```json
-{"house":{"name":"Ash House","members":["Alex","Sam","Max"],"startedAt":"2026-09-01T00:00:00.000Z","sample":true},"soloLimit":18,"dualAbove":100}
+{"house":{"name":"Ash House","members":["Alex","Sam","Max"],"startedAt":"2026-09-01T00:00:00.000Z","sample":true},"soloLimit":18,"dualAbove":100,"caps":{},"at":"2026-11-04T09:00:00.000Z"}
 ```
 
-Closed house adds `"closedAt":"<iso>"`.
+`caps` carries every adopted cap, so a revision is recoverable even if the matching `adopt` row does not surface in recall. Closed house adds `"closedAt":"<iso>"`.
 
 Spend: the full `Decision` object.
 

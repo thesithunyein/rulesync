@@ -3,6 +3,7 @@ import {
   DEFAULT_STATED,
   categoryLabel,
   money,
+  type Category,
   type Decision,
   type Household,
   type LearnedRule,
@@ -34,11 +35,11 @@ export function decodeMemory(text: string): { kind: string; payload: unknown } |
   }
 }
 
-export function houseMemory(house: Household, stated: StatedRules): string {
+export function houseMemory(house: Household, stated: StatedRules, at = new Date().toISOString()): string {
   return encodeMemory(
     "house",
     `${house.name} with ${house.members.join(", ")}. Alone ${stated.soloLimit}. Two names ${stated.dualAbove}.`,
-    { house, soloLimit: stated.soloLimit, dualAbove: stated.dualAbove },
+    { house, soloLimit: stated.soloLimit, dualAbove: stated.dualAbove, caps: stated.caps, at },
   );
 }
 
@@ -141,6 +142,8 @@ export function restoreFromLines(lines: string[]): {
   let house: Household | null = null;
   let closed = false;
   let stated = { ...DEFAULT_STATED };
+  let newestHouse: { soloLimit?: number; dualAbove?: number; caps?: StatedRules["caps"]; at: string } | null = null;
+  const houseCaps: StatedRules["caps"] = {};
   const decisions = new Map<string, Decision>();
   const outcomes = new Map<string, Outcome>();
   const adoptions: Array<{
@@ -159,16 +162,17 @@ export function restoreFromLines(lines: string[]): {
         house?: Household;
         soloLimit?: number;
         dualAbove?: number;
+        caps?: StatedRules["caps"];
+        at?: string;
         closedAt?: string;
       };
       if (payload.closedAt) closed = true;
       if (payload.house?.name && Array.isArray(payload.house.members)) {
         house = payload.house;
-        stated = {
-          ...stated,
-          soloLimit: payload.soloLimit ?? stated.soloLimit,
-          dualAbove: payload.dualAbove ?? stated.dualAbove,
-        };
+        const at = typeof payload.at === "string" ? payload.at : "";
+        if (!newestHouse || at > newestHouse.at) {
+          newestHouse = { soloLimit: payload.soloLimit, dualAbove: payload.dualAbove, caps: payload.caps, at };
+        }
       }
     }
     if (row.kind === "spend") {
@@ -219,9 +223,20 @@ export function restoreFromLines(lines: string[]): {
     }
   }
   if (!house || closed) return null;
+  stated = {
+    ...stated,
+    soloLimit: newestHouse?.soloLimit ?? stated.soloLimit,
+    dualAbove: newestHouse?.dualAbove ?? stated.dualAbove,
+  };
+  for (const [category, cap] of Object.entries(newestHouse?.caps ?? {})) {
+    if (typeof cap === "number") houseCaps[category as Category] = cap;
+  }
+  stated = { ...stated, caps: houseCaps };
   for (const rule of [...adoptions].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""))) {
     if (rule.kind === "solo_cap" && rule.category && rule.cap != null) {
-      stated = { ...stated, caps: { ...stated.caps, [rule.category]: rule.cap } };
+      if (houseCaps[rule.category] == null) {
+        stated = { ...stated, caps: { ...stated.caps, [rule.category]: rule.cap } };
+      }
     }
     if (rule.kind === "never_discussed") stated = { ...stated, silenceUnder: true };
     if (rule.kind === "false_dual") stated = { ...stated, treatFastDualAsSingle: true };

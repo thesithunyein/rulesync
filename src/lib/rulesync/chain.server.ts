@@ -85,12 +85,16 @@ export async function recallLines(houseId?: string | null): Promise<{ ok: boolea
   try {
     const space = namespaceFor(houseId);
     const mem = await client(houseId);
-    const [house, broad] = await Promise.all([
+    const [house, adopt, outcome, broad] = await Promise.all([
       mem.recall({ query: HOUSE_QUERY, limit: 8, namespace: space }),
+      mem.recall({ query: "RuleSync adopt adopted rule on the books", limit: 40, namespace: space }),
+      mem.recall({ query: "RuleSync outcome broke the cap matched", limit: RECALL_LIMIT, namespace: space }),
       mem.recall({ query: BROAD_QUERY, limit: RECALL_LIMIT, namespace: space }),
     ]);
     let lines = uniqueLines([
       ...house.results.map((hit) => hit.text),
+      ...adopt.results.map((hit) => hit.text),
+      ...outcome.results.map((hit) => hit.text),
       ...broad.results.map((hit) => hit.text),
     ]);
     if (!lines.some(isHouseMemory)) {

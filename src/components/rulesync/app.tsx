@@ -272,32 +272,35 @@ export function RuleSyncApp() {
   }
 
   function adopt(rule: LearnedRule) {
-    if (isAdopted(rule, stated)) return;
-    setStated((s) => {
+    if (isAdopted(rule, stated) || !house) return;
+    const next: StatedRules = (() => {
       if (rule.kind === "solo_cap" && rule.category && rule.cap != null) {
-        return { ...s, caps: { ...s.caps, [rule.category]: rule.cap } };
+        return { ...stated, caps: { ...stated.caps, [rule.category]: rule.cap } };
       }
-      if (rule.kind === "never_discussed") return { ...s, silenceUnder: true };
-      if (rule.kind === "false_dual") return { ...s, treatFastDualAsSingle: true };
-      if (rule.kind === "rhythm") return { ...s, rhythms: [...s.rhythms, rule.id] };
-      if (rule.kind === "allowance") return { ...s, allowances: [...s.allowances, rule.id] };
-      return s;
-    });
-    publish([adoptMemory(rule)]);
+      if (rule.kind === "never_discussed") return { ...stated, silenceUnder: true };
+      if (rule.kind === "false_dual") return { ...stated, treatFastDualAsSingle: true };
+      if (rule.kind === "rhythm") return { ...stated, rhythms: [...stated.rhythms, rule.id] };
+      if (rule.kind === "allowance") return { ...stated, allowances: [...stated.allowances, rule.id] };
+      return stated;
+    })();
+    setStated(next);
+    publish([houseMemory(house, next), adoptMemory(rule)]);
   }
 
-  function reviseCap(category: Category, cap: number) {
+  function reviseCap(category: Category, cap: number, from: number | null, breaks: number) {
+    if (!house) return;
     const at = new Date().toISOString();
-    setStated((s) => ({ ...s, caps: { ...s.caps, [category]: cap } }));
-    const learned = rules.find((r) => r.kind === "solo_cap" && r.category === category);
+    const next: StatedRules = { ...stated, caps: { ...stated.caps, [category]: cap } };
+    setStated(next);
     publish([
+      houseMemory(house, next, at),
       adoptMemory(
         {
           id: `cap-${category}`,
           kind: "solo_cap",
-          weekDiscovered: learned?.weekDiscovered ?? week,
-          title: learned?.title ?? `${categoryLabel(category)} cap`,
-          detail: "",
+          weekDiscovered: week,
+          title: `${categoryLabel(category)} cap set at ${money(cap)}`,
+          detail: from != null ? `Raised from ${money(from)} after ${breaks} breaks.` : "",
           evidence: "",
           confidence: 1,
           category,
@@ -518,7 +521,7 @@ export function RuleSyncApp() {
                 <p className="mt-2 font-display text-xl leading-snug">{proposal.text}</p>
                 <button
                   type="button"
-                  onClick={() => reviseCap(proposal.category, proposal.cap)}
+                  onClick={() => reviseCap(proposal.category, proposal.cap, proposal.health.cap, proposal.health.breaks)}
                   className="press mt-4 inline-flex min-h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-ink"
                 >
                   Raise it to {money(proposal.cap)}

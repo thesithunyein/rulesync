@@ -35,13 +35,14 @@ On the sample house that produces seven lived rules, including "Friday is fast f
 
 ## What gets remembered
 
-Three kinds of records go to Walrus, each as one line of text with a JSON payload after a `||` marker:
+Four kinds of records go to Walrus, each as one line of text with a JSON payload after a `||` marker:
 
 | Kind | What it carries | Why it is stored |
 |---|---|---|
 | `house` | Name, members, written floor, two-name threshold | Without it there is no house to restore into |
 | `spend` | Member, amount, category, merchant, date, discussed, approvals, second-sign delay | The engine needs the raw decisions, not today's conclusions |
 | `adopt` | Which lived rule the house accepted, and the cap or flag it implies | Adoption is a decision, so it must survive the browser |
+| `outcome` | What the verdict was, against which cap, and when | Health of a rule is history, not a recomputation |
 
 ```ts
 `RuleSync ${kind}. ${sentence} ||${JSON.stringify(payload)}`
@@ -49,7 +50,15 @@ Three kinds of records go to Walrus, each as one line of text with a JSON payloa
 
 The sentence is for recall and for a human reading the namespace. The payload is what rebuilds the state exactly. A line that cannot be decoded is ignored, so a malformed memory cannot corrupt the house.
 
-Rules the house has not adopted are recomputed from the restored spends. That keeps one source of truth: decisions and adoptions are memory, everything else is derived.
+Rules the house has not adopted are recomputed from the restored spends. That keeps one source of truth: decisions, adoptions and outcomes are memory, everything else is derived.
+
+## A rule that can revise itself
+
+A rule that only ever gets learned is half a memory. The other half is knowing whether the rule held.
+
+Every logged spend writes an outcome row next to the spend row: matched, broke a written rule, or broke an adopted cap. Adopt the $45 groceries cap and log $52: the outcome is `broke_adopted`, stored against that cap. Log it again next week and the Rules screen says the cap broke twice and the highest was $58. The home screen turns that into a proposal: raise it to $60, or keep it and talk first.
+
+Adopting the proposal writes a revision through the same `adopt` row, carrying a later timestamp. Restore replays adoptions in time order, so the revision wins even if recall returns the rows backwards. The house is not just recalling what it decided. It is recalling what happened after it decided, and changing its mind with the evidence in hand.
 
 The Rules screen also lists the rows Walrus actually returns in a Memory on Walrus panel, so the memory is inspectable rather than implied. A record that cannot affect the ledger, such as a spend with a non-positive amount, is ignored on restore and hidden from the panel.
 
@@ -57,9 +66,9 @@ The Rules screen also lists the rows Walrus actually returns in a Memory on Walr
 
 This is the part that matters. Everything above follows the house, not the browser. A new laptop, a cleared cache, or a second phone is where a shared budget normally dies.
 
-Writes go to Walrus Mainnet as the house changes. The sample seeds the namespace once, on the first open while it is still empty. After that, logging a spend writes that spend, adopting a rule writes the adoption, and starting a new house writes its house record. Writes are batched and carry an idempotency key so a retry does not duplicate a record.
+Writes go to Walrus Mainnet as the house changes. The sample seeds the namespace once, on the first open while it is still empty. After that, logging a spend writes that spend and its outcome, adopting a rule writes the adoption, revising a cap writes a newer adoption, and starting a new house writes its house record. Writes are batched and carry an idempotency key so a retry does not duplicate a record.
 
-On a cold load the app recovers the namespace before it shows anything to create, then rebuilds the household, the spends, and the adopted rules. The screen says "Waking the house from Walrus" while it works, which takes three to nine seconds on a cold browser.
+On a cold load the app recovers the namespace before it shows anything to create, then rebuilds the household, the spends, the adoptions and the outcomes. The screen says "Waking the house from Walrus" while it works, which takes three to nine seconds on a cold browser.
 
 `localStorage` cannot do this. It is per browser, it is a blob the app cannot query, and the second person in the household cannot see it. For shared money the memory has to live somewhere both people can reach, and it has to be readable by the app rather than by whoever remembers the password.
 

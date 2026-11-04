@@ -39,6 +39,9 @@ flowchart TD
   adopt --> books["On the books"]
   gap -->|yes| books
   books --> next["Next spend is judged"]
+  next --> outcome["Outcome written"]
+  outcome --> health["Cap health and a revision proposal"]
+  health --> adopt
   spend --> device["This device"]
   spend --> server["Server functions"]
   adopt --> server
@@ -50,7 +53,11 @@ flowchart TD
   walrus --> fresh["Empty browser recalls the house"]
 ```
 
-The chain is not a screen. Walrus stores the house, the spends, and the adopted rules. Tatum reads the household Sui address; any outgoing transfer can be imported as a spend, which then goes through the same engine and the same Walrus write. The balance stays labeled in SUI.
+The chain is not a screen. Walrus stores the house, the spends, the adopted rules, and the outcome of every verdict. Tatum reads the household Sui address; any outgoing transfer can be imported as a spend, which then goes through the same engine and the same Walrus write. The balance stays labeled in SUI.
+
+## Outcomes and revisions
+
+Every logged spend also writes an outcome row: matched, broke a written rule, or broke an adopted cap. An adopted cap shows how many times it broke and the highest spend that broke it. Two breaks propose a new number, and adopting the proposal writes a revision row with a later timestamp, so the revision wins on the next cold restore. The format is pinned in [docs/memory-format.md](docs/memory-format.md).
 
 ## Run
 
@@ -74,9 +81,10 @@ npm run build
 3. Adopt that rule.
 4. Open Rules. It is on the books.
 5. Log a grocery above the new cap. The verdict breaks.
-6. Open Rules, read the Sui address with Tatum, and import an outgoing transfer. It becomes a spend, gets judged like any other, and is written to Walrus. The row then shows Imported, so the same digest cannot land twice.
-7. The Memory on Walrus panel lists what Mainnet actually returns for the namespace.
-8. Export writes `rulesync.json` with the house, the spends, the rules, and the memory records.
+6. Log it again. Rules now shows how many times the cap broke, and the home screen proposes a higher number. Adopt it and the new cap is written to Walrus.
+7. Open Rules, read the Sui address with Tatum, and import an outgoing transfer. It becomes a spend, gets judged like any other, and is written to Walrus. The row then shows Imported, so the same digest cannot land twice.
+8. The Memory on Walrus panel lists what Mainnet actually returns for the namespace.
+9. Export writes `rulesync.json` with the house, the spends, the rules, the outcomes, and the memory records.
 
 An empty house learns the same way once a pattern repeats. Nothing is pre-seeded unless you open the sample.
 
