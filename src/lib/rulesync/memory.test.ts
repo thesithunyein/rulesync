@@ -5,6 +5,7 @@ import {
   closeMemory,
   houseMemory,
   isHouseMemory,
+  outcomeMemory,
   restoreFromLines,
   spendMemory,
   uniqueLines,
@@ -79,6 +80,62 @@ describe("restoreFromLines", () => {
 
     assert.ok(restored);
     assert.deepEqual(restored.decisions, []);
+  });
+
+  it("restores outcome rows and keeps only valid ones", () => {
+    const over = { ...spend, amount: 52 };
+    const restored = restoreFromLines([
+      houseMemory(house, DEFAULT_STATED),
+      outcomeMemory(over, "broke_adopted", 45, "2026-11-04T10:00:00.000Z"),
+      "RuleSync outcome. Broken ||{\"id\":\"out-bad\"}",
+      "RuleSync outcome. Broken ||not json",
+    ]);
+
+    assert.ok(restored);
+    assert.equal(restored.outcomes.length, 1);
+    assert.equal(restored.outcomes[0]?.kind, "broke_adopted");
+    assert.equal(restored.outcomes[0]?.amount, 52);
+  });
+
+  it("applies cap revisions in time order even when recall returns them backwards", () => {
+    const older = adoptMemory(rule, "2026-11-01T00:00:00.000Z");
+    const newer = adoptMemory({ ...rule, cap: 55 }, "2026-11-03T00:00:00.000Z");
+    const restored = restoreFromLines([houseMemory(house, DEFAULT_STATED), newer, older]);
+
+    assert.ok(restored);
+    assert.equal(restored.stated.caps.groceries, 55);
+  });
+
+  it("does not duplicate a repeated rhythm adoption", () => {
+    const rhythm: LearnedRule = {
+      id: "rhythm-groceries-5",
+      kind: "rhythm",
+      weekDiscovered: 2,
+      title: "Saturday is groceries",
+      detail: "",
+      evidence: "",
+      confidence: 1,
+      category: "groceries",
+      weekday: 5,
+    };
+    const restored = restoreFromLines([
+      houseMemory(house, DEFAULT_STATED),
+      adoptMemory(rhythm, "2026-11-01T00:00:00.000Z"),
+      adoptMemory(rhythm, "2026-11-02T00:00:00.000Z"),
+    ]);
+
+    assert.ok(restored);
+    assert.deepEqual(restored.stated.rhythms, ["rhythm-groceries-5"]);
+  });
+});
+
+describe("outcomeMemory", () => {
+  it("pins the record line from the spec", () => {
+    const over = { ...spend, amount: 52 };
+    assert.equal(
+      outcomeMemory(over, "broke_adopted", 45, "2026-11-04T10:00:00.000Z"),
+      'RuleSync outcome. Groceries broke the $45 cap at $52. ||{"id":"out-s1","decisionId":"s1","kind":"broke_adopted","category":"groceries","member":"Alex","amount":52,"cap":45,"at":"2026-11-04T10:00:00.000Z"}',
+    );
   });
 });
 

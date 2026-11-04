@@ -28,10 +28,19 @@ import {
   closeMemory,
   decodeMemory,
   houseMemory,
+  outcomeLine,
+  outcomeMemory,
   restoreFromLines,
   spendMemory,
 } from "@/lib/rulesync/memory";
-import { buildMemories, headline, judgeSpend, learnUpTo } from "@/lib/rulesync/engine";
+import {
+  buildMemories,
+  capHealth,
+  headline,
+  judgeSpend,
+  learnUpTo,
+  proposalFor,
+} from "@/lib/rulesync/engine";
 import {
   CATEGORIES,
   DEFAULT_STATED,
@@ -44,6 +53,7 @@ import {
   type Decision,
   type Household,
   type LearnedRule,
+  type Outcome,
   type StatedRules,
   type Verdict,
 } from "@/lib/rulesync/types";
@@ -73,6 +83,7 @@ type Saved = {
   house: Household | null;
   stated: StatedRules;
   decisions: Decision[];
+  outcomes?: Outcome[];
 };
 
 type ImportDraft = { id: string; amount: number; merchant: string; at: string };
@@ -100,6 +111,7 @@ export function RuleSyncApp() {
   const [house, setHouse] = useState<Household | null>(null);
   const [stated, setStated] = useState<StatedRules>(DEFAULT_STATED);
   const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [view, setView] = useState<"home" | "rules">("home");
@@ -125,6 +137,7 @@ export function RuleSyncApp() {
       setHouse(saved.house);
       setStated({ ...DEFAULT_STATED, ...saved.stated, caps: saved.stated?.caps ?? {} });
       setDecisions(saved.decisions ?? []);
+      setOutcomes(saved.outcomes ?? []);
     } else {
       setRestoring(true);
     }
@@ -171,6 +184,7 @@ export function RuleSyncApp() {
         setHouse(restored.house);
         setStated(restored.stated);
         setDecisions(restored.decisions);
+        setOutcomes(restored.outcomes);
         setChainNote(`Restored ${restored.house.name} from Walrus`);
       } catch {
         if (!cancel) {
@@ -211,7 +225,7 @@ export function RuleSyncApp() {
       }
       const status = await getChainStatus({ data: { houseId: houseIdRef.current } });
       setChain(status);
-      setChainNote(wrote > 0 ? `${wrote} on Mainnet` : "");
+      setChainNote(wrote > 0 ? `${wrote} ${wrote === 1 ? "record" : "records"} written` : "");
     })().catch(() => setChainNote("Mainnet write did not go through"));
   }
 
@@ -222,15 +236,16 @@ export function RuleSyncApp() {
       localStorage.removeItem(key);
       return;
     }
-    const payload: Saved = { house, stated, decisions };
+    const payload: Saved = { house, stated, decisions, outcomes };
     localStorage.setItem(key, JSON.stringify(payload));
-  }, [house, stated, decisions, hydrated]);
+  }, [house, stated, decisions, outcomes, hydrated]);
 
   const week = decisions.reduce((m, d) => Math.max(m, d.week), 1);
   const rules = useMemo(() => learnUpTo(decisions, week, stated), [decisions, week, stated]);
   const spent = decisions.reduce((a, d) => a + d.amount, 0);
   const line = headline(rules, stated);
   const lead = rules.find((r) => r.kind === "solo_cap" && !isAdopted(r, stated)) ?? null;
+  const proposal = proposalFor(stated, outcomes);
 
   function openHouse(next: Household, nextStated: StatedRules, nextDecisions: Decision[]) {
     const nextId = next.sample ? null : newHouseId();
@@ -243,6 +258,7 @@ export function RuleSyncApp() {
     setHouse(next);
     setStated(nextStated);
     setDecisions(nextDecisions);
+    setOutcomes([]);
     setView("home");
     setLogging(false);
     const onChain = chainRef.current;
@@ -270,12 +286,50 @@ export function RuleSyncApp() {
     publish([adoptMemory(rule)]);
   }
 
-  function addDecision(next: Decision) {
+  function reviseCap(category: Category, cap: number) {
+    const at = new Date().toISOString();
+    setStated((s) => ({ ...s, caps: { ...s.caps, [category]: cap } }));
+    const learned = rules.find((r) => r.kind === "solo_cap" && r.category === category);
+    publish([
+      adoptMemory(
+        {
+          id: `cap-${category}`,
+          kind: "solo_cap",
+          weekDiscovered: learned?.weekDiscovered ?? week,
+          title: learned?.title ?? `${categoryLabel(category)} cap`,
+          detail: "",
+          evidence: "",
+          confidence: 1,
+          category,
+          cap,
+        },
+        at,
+      ),
+    ]);
+    setChainNote(`Raised the ${categoryLabel(category).toLowerCase()} cap to ${money(cap)}`);
+  }
+
+  function addDecision(next: Decision, verdict: Verdict) {
     setDecisions((prev) => [...prev, next]);
     setLogging(false);
     setDraft(null);
     setView("home");
-    publish([spendMemory(next)]);
+    const at = new Date().toISOString();
+    const cap = stated.caps[next.category] ?? null;
+    setOutcomes((prev) => [
+      ...prev,
+      {
+        id: `out-${next.id}`,
+        decisionId: next.id,
+        kind: verdict.outcome,
+        category: next.category,
+        member: next.member,
+        amount: next.amount,
+        cap,
+        at,
+      },
+    ]);
+    publish([spendMemory(next), outcomeMemory(next, verdict.outcome, cap, at)]);
   }
 
   function importTransfer(tx: SuiTransfer) {
@@ -300,6 +354,7 @@ export function RuleSyncApp() {
     setHouse(null);
     setStated(DEFAULT_STATED);
     setDecisions([]);
+    setOutcomes([]);
     setView("home");
     setLogging(false);
   }
@@ -325,6 +380,7 @@ export function RuleSyncApp() {
     setHouse(null);
     setStated(DEFAULT_STATED);
     setDecisions([]);
+    setOutcomes([]);
     setView("home");
     setLogging(false);
     setChainNote("");
@@ -334,7 +390,7 @@ export function RuleSyncApp() {
     if (!house) return;
     const memories = buildMemories(decisions, house.name, stated, rules);
     const blob = new Blob(
-      [JSON.stringify({ house, stated, decisions, rules, memories }, null, 2)],
+      [JSON.stringify({ house, stated, decisions, outcomes, rules, memories }, null, 2)],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -424,7 +480,7 @@ export function RuleSyncApp() {
             <p className="rise mt-3 text-sm text-mist" style={{ animationDelay: "200ms" }}>
               {decisions.length === 0
                 ? "Nothing logged yet."
-                : `${decisions.length} spends · floor ${money(stated.soloLimit)} · two names over ${money(stated.dualAbove)}`}
+                : `${decisions.length} ${decisions.length === 1 ? "spend" : "spends"} · floor ${money(stated.soloLimit)} · two names over ${money(stated.dualAbove)}`}
               {chain?.walrus && chain.memories > 0
                 ? ` · Mainnet ${chain.memories}`
                 : ""}
@@ -452,6 +508,23 @@ export function RuleSyncApp() {
                 <p className="font-display text-3xl leading-tight">The written rules and the lived ones match.</p>
               )}
             </div>
+
+            {proposal && (
+              <div
+                className="rise mt-4 rounded-3xl border border-accent/40 bg-panel px-5 py-5"
+                style={{ animationDelay: "320ms" }}
+              >
+                <p className="text-xs text-accent">The rule you adopted is not holding</p>
+                <p className="mt-2 font-display text-xl leading-snug">{proposal.text}</p>
+                <button
+                  type="button"
+                  onClick={() => reviseCap(proposal.category, proposal.cap)}
+                  className="press mt-4 inline-flex min-h-11 items-center rounded-full bg-accent px-4 text-sm font-medium text-accent-ink"
+                >
+                  Raise it to {money(proposal.cap)}
+                </button>
+              </div>
+            )}
 
             {recent.length > 0 && (
               <ul className="mt-10 divide-y divide-line">
@@ -482,6 +555,7 @@ export function RuleSyncApp() {
           <RulesView
             stated={stated}
             rules={rules}
+            outcomes={outcomes}
             houseId={houseId}
             onAdopt={adopt}
             onExport={exportFile}
@@ -495,7 +569,18 @@ export function RuleSyncApp() {
               publish([
                 house ? houseMemory(house, stated) : "",
                 ...decisions.map(spendMemory),
-                ...rules.filter((rule) => isAdopted(rule, stated)).map(adoptMemory),
+                ...outcomes.map(outcomeLine),
+                ...rules
+                  .filter(
+                    (rule) =>
+                      isAdopted(rule, stated) &&
+                      !(
+                        rule.kind === "solo_cap" &&
+                        rule.category &&
+                        stated.caps[rule.category] !== rule.cap
+                      ),
+                  )
+                  .map((rule) => adoptMemory(rule)),
               ].filter(Boolean))
             }
             suiAddress={suiAddress}
@@ -696,6 +781,7 @@ function Field({
 function RulesView({
   stated,
   rules,
+  outcomes,
   houseId,
   onAdopt,
   onExport,
@@ -717,6 +803,7 @@ function RulesView({
 }: {
   stated: StatedRules;
   rules: LearnedRule[];
+  outcomes: Outcome[];
   houseId: string | null;
   onAdopt: (rule: LearnedRule) => void;
   onExport: () => void;
@@ -778,6 +865,9 @@ function RulesView({
         )}
         {rules.map((rule, i) => {
           const on = isAdopted(rule, stated);
+          const adoptedCap = rule.kind === "solo_cap" && rule.category ? stated.caps[rule.category] : undefined;
+          const health =
+            rule.category && adoptedCap != null ? capHealth(outcomes, rule.category, adoptedCap) : null;
           return (
             <li
               key={rule.id}
@@ -791,6 +881,12 @@ function RulesView({
                 <h2 className="font-display text-2xl leading-snug">{rule.title}</h2>
               </div>
               <p className="mt-2 text-sm text-mist">{rule.evidence}</p>
+              {health && health.breaks > 0 && (
+                <p className="mt-2 text-sm text-accent">
+                  Broke {health.breaks === 1 ? "once" : `${health.breaks} times`} against the{" "}
+                  {money(health.cap)} cap. Highest {money(health.worst)}.
+                </p>
+              )}
               <button
                 type="button"
                 disabled={on}
@@ -1003,7 +1099,7 @@ function LogSheet({
   rules: LearnedRule[];
   draft: ImportDraft | null;
   onClose: () => void;
-  onSave: (d: Decision) => void;
+  onSave: (d: Decision, verdict: Verdict) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
@@ -1052,20 +1148,23 @@ function LogSheet({
   function save() {
     if (!verdict || !merchant.trim()) return;
     const at = new Date(`${date}T12:00:00`).toISOString();
-    onSave({
-      id: draft?.id ?? `you-${Date.now()}`,
-      week: weekOf(at, house.startedAt),
-      weekday,
-      at,
-      member,
-      category,
-      merchant: merchant.trim(),
-      amount: Math.round(n * 1e6) / 1e6,
-      discussed,
-      approvals,
-      secondSignDelayMin: second ? Number(delay) || 0 : null,
-      source: "you",
-    });
+    onSave(
+      {
+        id: draft?.id ?? `you-${Date.now()}`,
+        week: weekOf(at, house.startedAt),
+        weekday,
+        at,
+        member,
+        category,
+        merchant: merchant.trim(),
+        amount: Math.round(n * 1e6) / 1e6,
+        discussed,
+        approvals,
+        secondSignDelayMin: second ? Number(delay) || 0 : null,
+        source: "you",
+      },
+      verdict,
+    );
     setAmount("");
     setMerchant("");
     setDiscussed(false);

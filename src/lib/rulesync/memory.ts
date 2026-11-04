@@ -1,8 +1,23 @@
-import { DEFAULT_STATED, type Decision, type Household, type LearnedRule, type StatedRules } from "./types.ts";
+import {
+  CATEGORIES,
+  DEFAULT_STATED,
+  categoryLabel,
+  money,
+  type Decision,
+  type Household,
+  type LearnedRule,
+  type Outcome,
+  type OutcomeKind,
+  type StatedRules,
+} from "./types.ts";
 
 const MARK = "||";
 
-export function encodeMemory(kind: "house" | "spend" | "adopt", sentence: string, payload: unknown): string {
+export function encodeMemory(
+  kind: "house" | "spend" | "adopt" | "outcome",
+  sentence: string,
+  payload: unknown,
+): string {
   return `RuleSync ${kind}. ${sentence} ${MARK}${JSON.stringify(payload)}`;
 }
 
@@ -48,7 +63,7 @@ export function spendMemory(d: Decision): string {
   );
 }
 
-export function adoptMemory(rule: LearnedRule): string {
+export function adoptMemory(rule: LearnedRule, at = new Date().toISOString()): string {
   return encodeMemory(
     "adopt",
     `Adopted ${rule.kind} ${rule.title}.`,
@@ -59,8 +74,47 @@ export function adoptMemory(rule: LearnedRule): string {
       cap: rule.cap,
       member: rule.member,
       weekday: rule.weekday,
+      at,
     },
   );
+}
+
+export function outcomeLine(o: Outcome): string {
+  const label = categoryLabel(o.category);
+  const sentence =
+    o.kind === "broke_adopted"
+      ? `${label} broke the ${money(o.cap ?? 0)} cap at ${money(o.amount)}.`
+      : o.kind === "broke_written"
+        ? `${label} broke a written rule at ${money(o.amount)}.`
+        : `${label} matched the rules at ${money(o.amount)}.`;
+  return encodeMemory("outcome", sentence, {
+    id: o.id,
+    decisionId: o.decisionId,
+    kind: o.kind,
+    category: o.category,
+    member: o.member,
+    amount: o.amount,
+    cap: o.cap,
+    at: o.at,
+  });
+}
+
+export function outcomeMemory(
+  d: Decision,
+  kind: OutcomeKind,
+  cap: number | null,
+  at = new Date().toISOString(),
+): string {
+  return outcomeLine({
+    id: `out-${d.id}`,
+    decisionId: d.id,
+    kind,
+    category: d.category,
+    member: d.member,
+    amount: d.amount,
+    cap,
+    at,
+  });
 }
 
 export function isHouseMemory(text: string): boolean {
@@ -82,17 +136,21 @@ export function restoreFromLines(lines: string[]): {
   house: Household;
   stated: StatedRules;
   decisions: Decision[];
+  outcomes: Outcome[];
 } | null {
   let house: Household | null = null;
   let closed = false;
   let stated = { ...DEFAULT_STATED };
   const decisions = new Map<string, Decision>();
+  const outcomes = new Map<string, Outcome>();
   const adoptions: Array<{
     id: string;
     kind: LearnedRule["kind"];
     category?: LearnedRule["category"];
     cap?: number;
+    at?: string;
   }> = [];
+  const kinds: OutcomeKind[] = ["broke_adopted", "broke_written", "matched"];
   for (const line of lines) {
     const row = decodeMemory(line);
     if (!row) continue;
@@ -123,19 +181,56 @@ export function restoreFromLines(lines: string[]): {
         kind?: LearnedRule["kind"];
         category?: LearnedRule["category"];
         cap?: number;
+        at?: string;
       };
-      if (rule.id && rule.kind) adoptions.push({ id: rule.id, kind: rule.kind, category: rule.category, cap: rule.cap });
+      if (rule.id && rule.kind) {
+        adoptions.push({
+          id: rule.id,
+          kind: rule.kind,
+          category: rule.category,
+          cap: rule.cap,
+          at: rule.at,
+        });
+      }
+    }
+    if (row.kind === "outcome") {
+      const o = row.payload as Partial<Outcome>;
+      if (
+        o?.id &&
+        o.decisionId &&
+        o.kind &&
+        kinds.includes(o.kind) &&
+        typeof o.amount === "number" &&
+        o.amount > 0 &&
+        typeof o.at === "string"
+      ) {
+        const category = CATEGORIES.some((c) => c.id === o.category) ? (o.category as Outcome["category"]) : "other";
+        outcomes.set(o.id, {
+          id: o.id,
+          decisionId: o.decisionId,
+          kind: o.kind,
+          category,
+          member: typeof o.member === "string" ? o.member : "",
+          amount: o.amount,
+          cap: typeof o.cap === "number" ? o.cap : null,
+          at: o.at,
+        });
+      }
     }
   }
   if (!house || closed) return null;
-  for (const rule of adoptions) {
+  for (const rule of [...adoptions].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""))) {
     if (rule.kind === "solo_cap" && rule.category && rule.cap != null) {
       stated = { ...stated, caps: { ...stated.caps, [rule.category]: rule.cap } };
     }
     if (rule.kind === "never_discussed") stated = { ...stated, silenceUnder: true };
     if (rule.kind === "false_dual") stated = { ...stated, treatFastDualAsSingle: true };
-    if (rule.kind === "rhythm") stated = { ...stated, rhythms: [...stated.rhythms, rule.id] };
-    if (rule.kind === "allowance") stated = { ...stated, allowances: [...stated.allowances, rule.id] };
+    if (rule.kind === "rhythm" && !stated.rhythms.includes(rule.id)) {
+      stated = { ...stated, rhythms: [...stated.rhythms, rule.id] };
+    }
+    if (rule.kind === "allowance" && !stated.allowances.includes(rule.id)) {
+      stated = { ...stated, allowances: [...stated.allowances, rule.id] };
+    }
   }
-  return { house, stated, decisions: [...decisions.values()] };
+  return { house, stated, decisions: [...decisions.values()], outcomes: [...outcomes.values()] };
 }

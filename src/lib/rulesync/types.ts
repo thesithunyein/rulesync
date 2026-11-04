@@ -73,6 +73,20 @@ export type Verdict = {
   tone: "break" | "match" | "quiet" | "hold";
   title: string;
   lines: string[];
+  outcome: OutcomeKind;
+};
+
+export type OutcomeKind = "broke_adopted" | "broke_written" | "matched";
+
+export type Outcome = {
+  id: string;
+  decisionId: string;
+  kind: OutcomeKind;
+  category: Category;
+  member: string;
+  amount: number;
+  cap: number | null;
+  at: string;
 };
 
 export type SpendDraft = {

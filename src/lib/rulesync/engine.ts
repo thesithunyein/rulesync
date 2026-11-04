@@ -3,11 +3,12 @@ import type {
   Decision,
   LearnedRule,
   MemoryRecord,
+  Outcome,
   SpendDraft,
   StatedRules,
   Verdict,
-} from "./types";
-import { CATEGORIES, categoryLabel, money, WEEKDAYS } from "./types";
+} from "./types.ts";
+import { CATEGORIES, categoryLabel, money, WEEKDAYS } from "./types.ts";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -230,6 +231,7 @@ export function judgeSpend(
       tone: "quiet",
       title: "Let it through",
       lines: [`Spends under ${money(stated.soloLimit)} no longer ask for a conversation.`],
+      outcome: "matched",
     };
   }
 
@@ -238,6 +240,7 @@ export function judgeSpend(
       tone: "match",
       title: "Inside the limit you adopted",
       lines: [`${money(draft.amount)} sits within the ${money(adoptedCap)} you put on the books.`],
+      outcome: "matched",
     };
   }
 
@@ -295,8 +298,12 @@ export function judgeSpend(
       tone: "hold",
       title: "Nothing in memory objects",
       lines: ["Not enough of a pattern yet to confirm this or push back."],
+      outcome: "matched",
     };
   }
+
+  const brokeAdopted =
+    adoptedCap != null && draft.amount > adoptedCap && draft.approvals.length <= 1;
 
   const breaksWritten =
     (capRule?.cap != null &&
@@ -304,15 +311,65 @@ export function judgeSpend(
       draft.amount > stated.soloLimit &&
       draft.amount <= capRule.cap &&
       draft.approvals.length <= 1) ||
-    (adoptedCap != null && draft.amount > adoptedCap && draft.approvals.length <= 1) ||
-    fastSecond ||
+    brokeAdopted ||
+    (fastSecond && !stated.treatFastDualAsSingle) ||
     (draft.amount >= stated.dualAbove && draft.approvals.length < 2);
 
   return {
     tone: breaksWritten ? "break" : "match",
     title: breaksWritten ? "Written and lived rules disagree" : "This matches the house",
     lines,
+    outcome: brokeAdopted ? "broke_adopted" : breaksWritten ? "broke_written" : "matched",
   };
+}
+
+export type CapHealth = {
+  cap: number;
+  breaks: number;
+  worst: number;
+  lastAt: string | null;
+};
+
+export function capHealth(outcomes: Outcome[], category: Category, cap: number): CapHealth {
+  const hits = outcomes.filter(
+    (o) => o.kind === "broke_adopted" && o.category === category && o.cap === cap,
+  );
+  return {
+    cap,
+    breaks: hits.length,
+    worst: hits.reduce((m, o) => Math.max(m, o.amount), 0),
+    lastAt: hits.reduce<string | null>((m, o) => (!m || o.at > m ? o.at : m), null),
+  };
+}
+
+export function capProposal(
+  category: Category,
+  health: CapHealth,
+): { cap: number; text: string } | null {
+  if (health.breaks < 2 || health.worst <= 0) return null;
+  const raised = Math.max(Math.ceil(health.worst / 5) * 5, health.cap + 5);
+  return {
+    cap: raised,
+    text: `${categoryLabel(category)} broke the ${money(health.cap)} cap ${health.breaks} times. Highest was ${money(health.worst)}. Raise it to ${money(raised)}, or keep it and talk first.`,
+  };
+}
+
+export function proposalFor(
+  stated: StatedRules,
+  outcomes: Outcome[],
+): { category: Category; health: CapHealth; cap: number; text: string } | null {
+  let best: { category: Category; health: CapHealth; cap: number; text: string } | null = null;
+  for (const cat of CATEGORIES) {
+    const cap = stated.caps[cat.id];
+    if (cap == null) continue;
+    const health = capHealth(outcomes, cat.id, cap);
+    const proposal = capProposal(cat.id, health);
+    if (!proposal) continue;
+    if (!best || health.breaks > best.health.breaks) {
+      best = { category: cat.id, health, cap: proposal.cap, text: proposal.text };
+    }
+  }
+  return best;
 }
 
 export function buildMemories(
