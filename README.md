@@ -16,6 +16,10 @@
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-0e6b4f?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <img src="screenshots/setup.png" alt="RuleSync setup screen: Sui balance, house name, the people, and the two numbers a house agrees on" width="720">
+</p>
+
 ## The problem
 
 A household writes a rule. Groceries alone under $18. Two names over $100. Then the house spends the other way, and the budget still shows the rule they typed.
