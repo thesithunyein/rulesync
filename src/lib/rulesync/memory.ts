@@ -27,6 +27,19 @@ export function houseMemory(house: Household, stated: StatedRules): string {
   );
 }
 
+export function closeMemory(house: Household, stated: StatedRules): string {
+  return encodeMemory(
+    "house",
+    `${house.name} with ${house.members.join(", ")}. Alone ${stated.soloLimit}. Two names ${stated.dualAbove}.`,
+    {
+      house,
+      soloLimit: stated.soloLimit,
+      dualAbove: stated.dualAbove,
+      closedAt: new Date().toISOString(),
+    },
+  );
+}
+
 export function spendMemory(d: Decision): string {
   return encodeMemory(
     "spend",
@@ -71,6 +84,7 @@ export function restoreFromLines(lines: string[]): {
   decisions: Decision[];
 } | null {
   let house: Household | null = null;
+  let closed = false;
   let stated = { ...DEFAULT_STATED };
   const decisions = new Map<string, Decision>();
   const adoptions: Array<{
@@ -83,7 +97,13 @@ export function restoreFromLines(lines: string[]): {
     const row = decodeMemory(line);
     if (!row) continue;
     if (row.kind === "house") {
-      const payload = row.payload as { house?: Household; soloLimit?: number; dualAbove?: number };
+      const payload = row.payload as {
+        house?: Household;
+        soloLimit?: number;
+        dualAbove?: number;
+        closedAt?: string;
+      };
+      if (payload.closedAt) closed = true;
       if (payload.house?.name && Array.isArray(payload.house.members)) {
         house = payload.house;
         stated = {
@@ -107,7 +127,7 @@ export function restoreFromLines(lines: string[]): {
       if (rule.id && rule.kind) adoptions.push({ id: rule.id, kind: rule.kind, category: rule.category, cap: rule.cap });
     }
   }
-  if (!house) return null;
+  if (!house || closed) return null;
   for (const rule of adoptions) {
     if (rule.kind === "solo_cap" && rule.category && rule.cap != null) {
       stated = { ...stated, caps: { ...stated.caps, [rule.category]: rule.cap } };

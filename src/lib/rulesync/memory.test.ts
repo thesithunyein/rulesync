@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   adoptMemory,
+  closeMemory,
   houseMemory,
   isHouseMemory,
   restoreFromLines,
@@ -65,6 +66,11 @@ describe("restoreFromLines", () => {
 
   it("fails closed when recall did not surface the house line", () => {
     assert.equal(restoreFromLines([spendMemory(spend), adoptMemory(rule)]), null);
+  });
+
+  it("refuses to restore once a closed mark is in the memory", () => {
+    const lines = [houseMemory(house, DEFAULT_STATED), spendMemory(spend), closeMemory(house, DEFAULT_STATED)];
+    assert.equal(restoreFromLines(lines), null);
   });
 
   it("drops spend records without a positive amount", () => {

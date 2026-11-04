@@ -23,7 +23,14 @@ import {
   type ChainStatus,
   type SuiTransfer,
 } from "@/lib/rulesync/chain";
-import { adoptMemory, decodeMemory, houseMemory, restoreFromLines, spendMemory } from "@/lib/rulesync/memory";
+import {
+  adoptMemory,
+  closeMemory,
+  decodeMemory,
+  houseMemory,
+  restoreFromLines,
+  spendMemory,
+} from "@/lib/rulesync/memory";
 import { buildMemories, headline, judgeSpend, learnUpTo } from "@/lib/rulesync/engine";
 import {
   CATEGORIES,
@@ -292,6 +299,32 @@ export function RuleSyncApp() {
     setLogging(false);
   }
 
+  async function closeHouse() {
+    const id = houseIdRef.current;
+    if (!id || !house) return;
+    const ok = window.confirm(
+      "Close this house? The invite link stops opening it. Walrus keeps the encrypted history.",
+    );
+    if (!ok) return;
+    const result = await rememberLines({ data: { texts: [closeMemory(house, stated)], houseId: id } });
+    if (!result.ok) {
+      setChainNote("Could not close the house on Mainnet");
+      return;
+    }
+    localStorage.removeItem(storageKey(id));
+    houseIdRef.current = null;
+    setHouseId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("h");
+    window.history.replaceState(null, "", url);
+    setHouse(null);
+    setStated(DEFAULT_STATED);
+    setDecisions([]);
+    setView("home");
+    setLogging(false);
+    setChainNote("");
+  }
+
   function exportFile() {
     if (!house) return;
     const memories = buildMemories(decisions, house.name, stated, rules);
@@ -448,6 +481,7 @@ export function RuleSyncApp() {
             onAdopt={adopt}
             onExport={exportFile}
             onReset={startOver}
+            onClose={closeHouse}
             walrus={Boolean(chain?.walrus)}
             tatum={Boolean(chain?.tatum)}
             accountId={chain?.accountId ?? null}
@@ -661,6 +695,7 @@ function RulesView({
   onAdopt,
   onExport,
   onReset,
+  onClose,
   walrus,
   tatum,
   accountId,
@@ -681,6 +716,7 @@ function RulesView({
   onAdopt: (rule: LearnedRule) => void;
   onExport: () => void;
   onReset: () => void;
+  onClose: () => void;
   walrus: boolean;
   tatum: boolean;
   accountId: string | null;
@@ -797,7 +833,18 @@ function RulesView({
             </button>
           </div>
           <p className="mt-2 text-xs text-mist">
-            Anyone with this link opens this house and the same Walrus memory. Keep it in the household.
+            Anyone with this link opens this house and the same Walrus memory. Rows are encrypted
+            at rest by Walrus Memory. Keep the link in the household.
+          </p>
+        </div>
+      )}
+      {houseId && (
+        <div className="mt-6 border-t border-line pt-5">
+          <button type="button" onClick={onClose} className="press min-h-11 text-sm text-mist">
+            Close this house
+          </button>
+          <p className="mt-1 text-xs text-mist">
+            The invite link stops opening it. Walrus keeps the encrypted history.
           </p>
         </div>
       )}
