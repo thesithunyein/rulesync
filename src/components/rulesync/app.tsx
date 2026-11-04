@@ -866,6 +866,28 @@ function RulesView({
           const adoptedCap = rule.kind === "solo_cap" && rule.category ? stated.caps[rule.category] : undefined;
           const health =
             rule.category && adoptedCap != null ? capHealth(outcomes, rule.category, adoptedCap) : null;
+          const raisedFrom =
+            rule.kind === "solo_cap" && rule.category && adoptedCap != null
+              ? outcomes
+                  .filter(
+                    (o) =>
+                      o.kind === "broke_adopted" &&
+                      o.category === rule.category &&
+                      o.cap != null &&
+                      o.cap < adoptedCap,
+                  )
+                  .reduce<number | null>(
+                    (m, o) => (m == null || (o.cap as number) > m ? (o.cap as number) : m),
+                    null,
+                  )
+              : null;
+          const raisedBreaks =
+            raisedFrom != null && rule.category
+              ? outcomes.filter(
+                  (o) =>
+                    o.kind === "broke_adopted" && o.category === rule.category && o.cap === raisedFrom,
+                ).length
+              : 0;
           return (
             <li
               key={rule.id}
@@ -881,11 +903,13 @@ function RulesView({
               <p className="mt-2 text-sm text-mist">{rule.evidence}</p>
               {adoptedCap != null && rule.kind === "solo_cap" && rule.cap != null && (
                 <p className="mt-2 text-sm text-mist">
-                  {adoptedCap === rule.cap
-                    ? `On the books at ${money(adoptedCap)}.`
-                    : adoptedCap > rule.cap
-                      ? `On the books at ${money(adoptedCap)}, raised from ${money(rule.cap)}.`
-                      : `On the books at ${money(adoptedCap)}. The house keeps reaching ${money(rule.cap)}.`}
+                  {raisedFrom != null
+                    ? `On the books at ${money(adoptedCap)}, raised from ${money(raisedFrom)} after ${raisedBreaks} ${raisedBreaks === 1 ? "break" : "breaks"}.`
+                    : adoptedCap === rule.cap
+                      ? `On the books at ${money(adoptedCap)}.`
+                      : adoptedCap < rule.cap
+                        ? `On the books at ${money(adoptedCap)}. The house keeps reaching ${money(rule.cap)}.`
+                        : `On the books at ${money(adoptedCap)}.`}
                 </p>
               )}
               {health && health.breaks > 0 && (
