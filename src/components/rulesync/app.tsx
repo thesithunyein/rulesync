@@ -212,17 +212,19 @@ export function RuleSyncApp() {
         ready = status.walrus;
       }
       if (!ready) return;
-      let wrote = 0;
-      for (let i = 0; i < texts.length; i += 15) {
-        const chunk = texts.slice(i, i + 15);
-        const result = await rememberLines({ data: { texts: chunk, houseId: houseIdRef.current } });
-        if (!result.ok) {
-          console.warn("RuleSync memory write failed", result.error);
-          setChainNote("Mainnet write did not go through");
-          return;
-        }
-        wrote += result.wrote;
+      setChainNote(`Writing ${texts.length} ${texts.length === 1 ? "record" : "records"} to Mainnet…`);
+      const chunks: string[][] = [];
+      for (let i = 0; i < texts.length; i += 20) chunks.push(texts.slice(i, i + 20));
+      const results = await Promise.all(
+        chunks.map((chunk) => rememberLines({ data: { texts: chunk, houseId: houseIdRef.current } })),
+      );
+      const failed = results.find((result) => !result.ok);
+      if (failed) {
+        console.warn("RuleSync memory write failed", failed.error);
+        setChainNote("Mainnet write did not go through");
+        return;
       }
+      const wrote = results.reduce((sum, result) => sum + result.wrote, 0);
       const status = await getChainStatus({ data: { houseId: houseIdRef.current } });
       setChain(status);
       setChainNote(wrote > 0 ? `${wrote} ${wrote === 1 ? "record" : "records"} written` : "");
