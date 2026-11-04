@@ -173,7 +173,8 @@ export function RuleSyncApp() {
         const chunk = texts.slice(i, i + 15);
         const result = await rememberLines({ data: { texts: chunk } });
         if (!result.ok) {
-          setChainNote(result.error ?? "Mainnet write failed");
+          console.warn("RuleSync memory write failed", result.error);
+          setChainNote("Mainnet write did not go through");
           return;
         }
         wrote += result.wrote;
@@ -181,7 +182,7 @@ export function RuleSyncApp() {
       const status = await getChainStatus();
       setChain(status);
       setChainNote(wrote > 0 ? `${wrote} on Mainnet` : "");
-    })().catch(() => setChainNote("Mainnet write failed"));
+    })().catch(() => setChainNote("Mainnet write did not go through"));
   }
 
   useEffect(() => {

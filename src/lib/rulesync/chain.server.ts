@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { env } from "@/lib/env.server";
 import { isHouseMemory, uniqueLines } from "./memory";
 
@@ -51,9 +52,10 @@ export async function rememberLines(texts: string[]): Promise<{ ok: boolean; wro
   if (batch.length === 0) return { ok: false, wrote: 0, error: "Nothing to write" };
   try {
     const mem = await client();
+    const digest = createHash("sha256").update(batch.join("\n")).digest("hex").slice(0, 40);
     const done = await mem.rememberBulkAndWait(
       batch.map((text) => ({ text })),
-      { timeoutMs: 90_000, idempotencyKey: `rulesync-${batch.length}-${batch[0]?.slice(0, 48)}` },
+      { timeoutMs: 90_000, idempotencyKey: `rulesync-${digest}` },
     );
     const wrote = done.results.filter((r) => r.status === "done").length;
     return { ok: wrote > 0, wrote, error: wrote === 0 ? "Mainnet write failed" : undefined };
