@@ -138,7 +138,7 @@ export function RuleSyncApp() {
       setStated({ ...DEFAULT_STATED, ...saved.stated, caps: saved.stated?.caps ?? {} });
       setDecisions(saved.decisions ?? []);
       setOutcomes(saved.outcomes ?? []);
-    } else {
+    } else if (id) {
       setRestoring(true);
     }
     setHydrated(true);
@@ -171,7 +171,7 @@ export function RuleSyncApp() {
             }
           }
         }
-        if (!status.walrus || houseRef.current) {
+        if (!status.walrus || houseRef.current || !houseIdRef.current) {
           if (!cancel) setRestoring(false);
           return;
         }
@@ -248,10 +248,9 @@ export function RuleSyncApp() {
   const proposal = proposalFor(stated, outcomes);
 
   function openHouse(next: Household, nextStated: StatedRules, nextDecisions: Decision[]) {
-    const nextId = next.sample ? null : newHouseId();
+    const nextId = newHouseId();
     const url = new URL(window.location.href);
-    if (nextId) url.searchParams.set("h", nextId);
-    else url.searchParams.delete("h");
+    url.searchParams.set("h", nextId);
     window.history.replaceState(null, "", url);
     houseIdRef.current = nextId;
     setHouseId(nextId);
@@ -261,14 +260,10 @@ export function RuleSyncApp() {
     setOutcomes([]);
     setView("home");
     setLogging(false);
-    const onChain = chainRef.current;
-    if (next.sample) {
-      if (onChain?.walrus && onChain.memories === 0) {
-        publish([houseMemory(next, nextStated), ...nextDecisions.map(spendMemory)]);
-      }
-      return;
-    }
-    publish([houseMemory(next, nextStated)]);
+    publish([
+      houseMemory(next, nextStated),
+      ...(next.sample ? nextDecisions.map(spendMemory) : []),
+    ]);
   }
 
   function adopt(rule: LearnedRule) {
@@ -884,6 +879,15 @@ function RulesView({
                 <h2 className="font-display text-2xl leading-snug">{rule.title}</h2>
               </div>
               <p className="mt-2 text-sm text-mist">{rule.evidence}</p>
+              {adoptedCap != null && rule.kind === "solo_cap" && rule.cap != null && (
+                <p className="mt-2 text-sm text-mist">
+                  {adoptedCap === rule.cap
+                    ? `On the books at ${money(adoptedCap)}.`
+                    : adoptedCap > rule.cap
+                      ? `On the books at ${money(adoptedCap)}, raised from ${money(rule.cap)}.`
+                      : `On the books at ${money(adoptedCap)}. The house keeps reaching ${money(rule.cap)}.`}
+                </p>
+              )}
               {health && health.breaks > 0 && (
                 <p className="mt-2 text-sm text-accent">
                   Broke {health.breaks === 1 ? "once" : `${health.breaks} times`} against the{" "}

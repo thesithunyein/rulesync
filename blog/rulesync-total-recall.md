@@ -13,7 +13,7 @@ Written rule, observed pattern, proposed lived rule, adoption, judgment of the n
 
 ![RuleSync home screen showing the written floor and the lived rule](https://raw.githubusercontent.com/thesithunyein/rulesync/main/blog/images/home.png)
 
-Open the sample house (Alex, Sam, and Max, six weeks, 32 spends, $1,472) and the home screen states the disagreement in one line: "Two names over $100 is not really two people." Adopt it and the rule moves onto the books. Log a grocery above the adopted cap and the verdict tells you which rule just broke, the written one or the lived one.
+Open the sample house (Alex, Sam, and Max, six weeks, 32 spends, $1,472) and the home screen states the disagreement in one line: "You wrote $18 alone. Groceries actually reaches $45." Adopt it and the rule moves onto the books; the home line moves to the next finding. Log a grocery above the adopted cap and the verdict tells you which rule just broke.
 
 None of this needs a wallet signature or a token. The chain stays off the screen.
 
@@ -66,7 +66,7 @@ The Rules screen also lists the rows Walrus actually returns in a Memory on Walr
 
 This is the part that matters. Everything above follows the house, not the browser. A new laptop, a cleared cache, or a second phone is where a shared budget normally dies.
 
-Writes go to Walrus Mainnet as the house changes. The sample seeds the namespace once, on the first open while it is still empty. After that, logging a spend writes that spend and its outcome, adopting a rule writes the adoption, revising a cap writes a newer adoption, and starting a new house writes its house record. Writes are batched and carry an idempotency key so a retry does not duplicate a record.
+Writes go to Walrus Mainnet as the house changes. Each house gets its own namespace, and every sample visit is a new house: the sample seeds its namespace once, on open, with the house record and the 32 spends. After that, logging a spend writes that spend and its outcome, adopting a rule writes the adoption, revising a cap writes a newer adoption, and starting a new house writes its house record. Writes are batched and carry an idempotency key so a retry does not duplicate a record.
 
 On a cold load the app recovers the namespace before it shows anything to create, then rebuilds the household, the spends, the adoptions and the outcomes. The screen says "Waking the house from Walrus" while it works, which takes three to nine seconds on a cold browser.
 
@@ -118,12 +118,12 @@ The lesson is worth passing on: when a memory is a structured record rather than
 | | |
 |---|---|
 | Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
-| Namespace | `rulesync` |
+| Namespace | `rulesync-<id>`, one per house. Every sample visit gets a new id |
 | Relayer | `https://relayer.memory.walrus.xyz` |
-| Memory rows | 69 (36 distinct records: the house, 33 spends, the adopted grocery rule, and one superseded import row that restore ignores) |
+| Memory rows | 33 at seed: the house record and 32 spends. A house grows with its spends, adoptions, and outcomes |
 | Sui reads | Tatum Sui GraphQL |
 
-The extra rows are from an early seeding test that wrote the sample more than once. Rows are de-duplicated by record id on restore, so the extra copies are harmless, and the count is the live count the app shows.
+The old shared `rulesync` namespace from early testing is no longer opened by the app. Its rows stay on Walrus because the history is append-only; the sample now starts clean every time.
 
 ## Houses, links, and closing
 
@@ -143,11 +143,12 @@ Walrus Memory runs inside a TEE and uses Seal to encrypt rows before they reach 
 ## Try it in a minute
 
 1. Open https://rulesync.sithunyein.com.
-2. Watch the house restore instead of starting from zero.
+2. Open the sample house. It writes six weeks of spends to Walrus under a new namespace.
 3. Adopt the rule the home screen proposes.
-4. Log a grocery above the cap and read the verdict.
-5. Open Rules to see the Mainnet count and the Sui balance from Tatum.
-6. Import an outgoing transfer and watch it join the ledger as a spend.
+4. Log a grocery above the cap twice and read the verdict and the proposal.
+5. Tap Raise it to $60, then open Rules to see it on the books.
+6. Read the Sui balance from Tatum and import an outgoing transfer.
 7. Scroll to Memory on Walrus and read the rows the house actually remembers.
+8. Open the invite link in a private window and watch the house wake with the raised cap.
 
 Built for the Tatum x Walrus Total Recall hackathon, Consumer Finance track.

@@ -67,7 +67,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open the app and either start a house or load the sample house. The sample is six weeks of spends for Alex, Sam, and Max, with a written solo floor of $18. Without the env file the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
+Open the app and either start a house or load the sample house. The sample is six weeks of spends for Alex, Sam, and Max, with a written solo floor of $18. Each visit to the sample gets its own house id and Walrus namespace, so it always starts clean. The bare URL opens the setup screen; a house or sample link is what restores a house from Walrus. Without the env file the app still runs. Memory stays on the device, and the Mainnet controls stay hidden.
 
 ```bash
 npm run typecheck
@@ -81,10 +81,12 @@ npm run build
 3. Adopt that rule.
 4. Open Rules. It is on the books.
 5. Log a grocery above the new cap. The verdict breaks.
-6. Log it again. Rules now shows how many times the cap broke, and the home screen proposes a higher number. Adopt it and the new cap is written to Walrus.
-7. Open Rules, read the Sui address with Tatum, and import an outgoing transfer. It becomes a spend, gets judged like any other, and is written to Walrus. The row then shows Imported, so the same digest cannot land twice.
-8. The Memory on Walrus panel lists what Mainnet actually returns for the namespace.
-9. Export writes `rulesync.json` with the house, the spends, the rules, the outcomes, and the memory records.
+6. Log it again. Rules now shows how many times the cap broke, and the home screen proposes a higher number. Tap **Raise it to $60**. The new cap is written to Walrus.
+7. Open Rules. The adopted rule now reads On the books at $60, raised from $45.
+8. Open Rules, read the Sui address with Tatum, and import an outgoing transfer. It becomes a spend, gets judged like any other, and is written to Walrus. The row then shows Imported, so the same digest cannot land twice.
+9. The Memory on Walrus panel lists what Mainnet actually returns for the namespace.
+10. Open the invite link in a private window. The house wakes from Walrus with the spends, the adoptions, the outcomes, and the raised cap.
+11. Export writes `rulesync.json` with the house, the spends, the rules, the outcomes, and the memory records.
 
 An empty house learns the same way once a pattern repeats. Nothing is pre-seeded unless you open the sample.
 
@@ -100,23 +102,23 @@ An empty house learns the same way once a pattern repeats. Nothing is pre-seeded
 
 ## Mainnet
 
-The Ash House sample is stored on Walrus Mainnet.
+A sample house is written to Walrus Mainnet when it opens.
 
 | | |
 |---|---|
 | Account | `0xffc3f0363abb929a71c85181e96771cff3fac17a78936eef4ba2f17c7ce5080f` |
-| Namespace | `rulesync` |
-| Memories | 34 at seed: the house, 32 spends, and the adopted grocery rule. The Rules screen shows the live count for the namespace |
+| Namespace | `rulesync-<id>`, one per house. Every sample visit gets a new id |
+| Memories | 33 at seed: the house record and 32 spends. The Rules screen shows the live count for that namespace |
 | Relayer | `https://relayer.memory.walrus.xyz` |
 | Sui reads | `https://sui-mainnet.gateway.tatum.io/graphql` |
 
-A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser. Opening a house, logging a spend, adopting a rule, importing a Tatum transfer, or pressing **Write to Mainnet** calls `remember`. The Rules screen shows the Mainnet count, the account id, and the rows Walrus returns.
+A server with `MEMWAL_PRIVATE_KEY` and `MEMWAL_ACCOUNT_ID` recalls that house into an empty browser through its invite link. Opening a house, logging a spend, adopting a rule, importing a Tatum transfer, or pressing **Write to Mainnet** calls `remember`. The Rules screen shows the Mainnet count, the account id, and the rows Walrus returns.
 
 If `TATUM_API_KEY` is set, Rules reads a Sui address: the SUI balance and recent outgoing transfers. JSON-RPC is no longer on that gateway, so the app uses GraphQL. A transfer can be imported as a spend; the row is keyed by digest, so re-importing is a no-op. If `SUI_ADDRESS` is set, the app reads it on open. The keys never reach the browser. Names are in [.env.example](.env.example).
 
 ## Houses, links, and closing
 
-A new house gets a ten character id and its own namespace, `rulesync-<id>`, so two households on one Walrus account never mix rows. Rules shows an invite link with the id in the query string; a second phone opens the same house and the same memory.
+A new house, and every sample visit, gets a ten character id and its own namespace, `rulesync-<id>`, so two households on one Walrus account never mix rows. Rules shows an invite link with the id in the query string; a second phone opens the same house and the same memory.
 
 **Close this house** writes one more house record with a `closedAt` mark, then forgets the local copy. Restore treats the mark as final, so the invite link stops opening the house even after a cache clear. It does not erase blobs: the relayer client has no delete call and Walrus history is append-only, so rows already written stay, encrypted.
 
